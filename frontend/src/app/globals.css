@@ -1,26 +1,45 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* AYZE design tokens — the single source of truth for colour and type.
+   Use the Tailwind utilities they generate (bg-tyrian, text-olympic, font-brand…)
+   rather than raw hex values in components. */
+@theme {
+  --color-white: #ffffff;
+  --color-tyrian: #0a1a3f; /* dark tyrian blue — primary */
+  --color-olympic: #0085c7; /* olympic blue — accent */
+  --color-olympic-deep: #0077b6; /* accent hover / pressed */
+
+  --font-sans: var(--font-sora), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-control: 0.625rem;
+  --tracking-brand: -0.04em;
 }
 
+/* Surface pair: `ink` is the text colour, `surface` the background.
+   Light surfaces are the default; add `.on-dark` to a container to flip
+   them, and every component built on ink/surface adapts. */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-ink: var(--ink);
+  --color-surface: var(--surface);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  :root,
+  .on-light {
+    --ink: var(--color-tyrian);
+    --surface: var(--color-white);
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  .on-dark {
+    --ink: var(--color-white);
+    --surface: var(--color-tyrian);
+  }
+  html {
+    color-scheme: light;
+  }
+  body {
+    @apply bg-surface text-ink font-sans antialiased;
+  }
+  ::selection {
+    @apply bg-olympic text-white;
+  }
 }
