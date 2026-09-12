@@ -1,2 +1,45 @@
 .xrpl-devex/
 .claude/settings.local.json
+# =========================
+# Node / Next
+# =========================
+node_modules/
+.next/
+frontend/node_modules/
+frontend/.next/
+dist/
+build/
+
+# =========================
+# Environment / secrets
+# =========================
+.env
+.env.*
+!.env.example
+
+# AYZE sensitive / runtime data
+accounts.json
+vault.json
+broker.json
+loan.json
+cover.json
+deposit.json
+repayment.json
+guardrail.json
+withdraw.json
+
+# =========================
+# macOS
+# =========================
+.DS_Store
+._*
+**/._*
+
+
+# =========================
+# Logs
+# =========================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
