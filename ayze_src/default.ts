@@ -17,9 +17,28 @@ const broker = JSON.parse(
     fs.readFileSync("broker.json", "utf8")
 );
 
-const escrow = JSON.parse(
+const escrowFile = JSON.parse(
     fs.readFileSync("escrow.json", "utf8")
 );
+
+// escrow.ts writes one escrow per scheduled payment
+// (escrowFile.escrows). Claim the first one still
+// locked and not yet expired: it is the missed payment.
+const nowRipple =
+    Math.floor(Date.now() / 1000) - 946_684_800;
+
+const escrow =
+    escrowFile.escrows.find(
+        (e: any) =>
+            e.status === "LOCKED" &&
+            e.cancelAfter > nowRipple
+    );
+
+if (!escrow) {
+    throw new Error(
+        "No claimable escrow left in escrow.json"
+    );
+}
 
 const TF_LOAN_DEFAULT = 65536;
 

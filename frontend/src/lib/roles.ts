@@ -10,3 +10,13 @@ export const ROLES = [
 ] as const;
 
 export type RoleId = (typeof ROLES)[number]["id"];
+
+export const isRoleId = (value: unknown): value is RoleId => ROLES.some((role) => role.id === value);
+
+/** Landing page of each role. */
+export const ROLE_HOME: Record<RoleId, string> = {
+  broker: "/broker",
+  lender: "/market",
+  borrower: "/market",
+  "protection-seller": "/protect",
+};

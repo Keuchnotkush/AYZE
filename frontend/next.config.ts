@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // xrpl.js relies on Node APIs (ws, crypto); keep it out of the RSC bundle.
+  serverExternalPackages: ["xrpl"],
 };
 
 export default nextConfig;

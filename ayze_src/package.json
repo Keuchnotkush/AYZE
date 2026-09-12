@@ -1,0 +1,45 @@
+{
+  "name": "@ayze/protocol",
+  "version": "1.0.0",
+  "description": "Short-term financing assured on the XRP Ledger. XLS-65 (Single Asset Vault) + XLS-66 (Lending Protocol) + XLS-85 (TokenEscrow).",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "check": "tsc --noEmit",
+    "accounts": "tsx accounts.ts",
+    "token": "tsx token.ts",
+    "vault": "tsx vault.ts",
+    "deposit": "tsx deposit.ts",
+    "check-vault": "tsx checkVault.ts",
+    "broker": "tsx broker.ts",
+    "cover": "tsx cover.ts",
+    "loan": "tsx loan.ts",
+    "repay": "tsx repay.ts",
+    "guardrail": "tsx guardrail.ts",
+    "withdraw": "tsx withdraw.ts",
+    "escrow": "tsx escrow.ts",
+    "insurance": "tsx insurance.ts",
+    "add-insurer": "tsx addInsurer.ts",
+    "default": "tsx default.ts",
+    "claim-insurance": "tsx claimInsurance.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Keuchnotkush/AYZE.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Keuchnotkush/AYZE/issues"
+  },
+  "homepage": "https://github.com/Keuchnotkush/AYZE#readme",
+  "dependencies": {
+    "five-bells-condition": "^5.0.1",
+    "xrpl": "^5.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}

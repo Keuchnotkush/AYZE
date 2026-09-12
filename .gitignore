@@ -25,6 +25,7 @@ loan.json
 cover.json
 deposit.json
 repayment.json
+escrow.json
 guardrail.json
 withdraw.json
 

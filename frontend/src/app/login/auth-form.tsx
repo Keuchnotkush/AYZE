@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Segmented } from "@/components/ui/segmented";
 import { RoleSelector } from "@/components/ui/role-selector";
 import type { RoleId } from "@/lib/roles";
+import { login, register, type ActionResult } from "@/server/actions";
 
 type Mode = "login" | "register";
 
@@ -15,50 +16,28 @@ const MODES = [
 ] as const;
 
 /**
- * Log in / create account form. Submission is wired to the backend later;
- * for now it collects the values and keeps the role on the client.
+ * Log in / create account. Creating an account generates a funded XRPL wallet for
+ * the chosen role (borrowers also receive the AYZE KYC credential); logging in
+ * reuses that wallet.
  */
 export function AuthForm() {
   const [mode, setMode] = useState<Mode>("login");
   const [role, setRole] = useState<RoleId | null>(null);
-  const [roleError, setRoleError] = useState<string | null>(null);
+  const [state, formAction, pending] = useActionState(
+    (prev: ActionResult, formData: FormData) => (formData.get("mode") === "register" ? register(prev, formData) : login(prev, formData)),
+    null,
+  );
 
   const isRegister = mode === "register";
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (isRegister && !role) {
-      setRoleError("Choose a role to continue.");
-      return;
-    }
-    setRoleError(null);
-    // TODO: call the auth backend once it is available.
-  }
-
   return (
-    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
-      <Segmented
-        label="Account action"
-        options={MODES}
-        value={mode}
-        onChange={(next) => {
-          setMode(next);
-          setRoleError(null);
-        }}
-      />
+    <form action={formAction} noValidate className="flex flex-col gap-6">
+      <input type="hidden" name="mode" value={mode} />
+      <Segmented label="Account action" options={MODES} value={mode} onChange={setMode} />
 
       <div className="flex flex-col gap-4">
-        {isRegister && (
-          <Field label="Company" name="company" autoComplete="organization" required />
-        )}
-        <Field
-          label="Email"
-          name="email"
-          type="email"
-          autoComplete="email"
-          inputMode="email"
-          required
-        />
+        {isRegister && <Field label="Company" name="company" autoComplete="organization" required />}
+        <Field label="Email" name="email" type="email" autoComplete="email" inputMode="email" required />
         <Field
           label="Password"
           name="password"
@@ -70,13 +49,20 @@ export function AuthForm() {
 
       {isRegister && (
         <div className="flex flex-col gap-1.5">
-          <RoleSelector value={role} onChange={(next) => { setRole(next); setRoleError(null); }} />
-          {roleError && <p className="text-xs text-red-400">{roleError}</p>}
+          <RoleSelector value={role} onChange={setRole} />
+          <input type="hidden" name="role" value={role ?? ""} />
         </div>
       )}
 
-      <Button type="submit" size="lg" className="mt-2">
-        {isRegister ? "Create account" : "Log in"}
+      {state && !state.ok && (
+        <p className="text-xs text-red-400">
+          <code className="mr-1">{state.code}</code>
+          {state.message}
+        </p>
+      )}
+
+      <Button type="submit" size="lg" className="mt-2" disabled={pending}>
+        {pending ? (isRegister ? "Creating wallet on the ledger…" : "Connecting…") : isRegister ? "Create account" : "Log in"}
       </Button>
 
       {!isRegister && (

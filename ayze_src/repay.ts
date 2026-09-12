@@ -711,7 +711,7 @@ async function regularPayment() {
         )
     ) {
         throw new Error(
-            "Payment deadline has passed. Use: npx tsx src/repay.ts late"
+            "Payment deadline has passed. Use: npm run repay -- late"
         );
     }
 
@@ -1002,7 +1002,7 @@ async function overpayment(
         extra <= 0
     ) {
         throw new Error(
-            "Example: npx tsx src/repay.ts overpay 100"
+            "Example: npx tsx repay.ts overpay 100"
         );
     }
 

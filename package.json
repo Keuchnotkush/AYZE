@@ -1,46 +1,14 @@
 {
-  "name": "ayze",
-  "version": "1.0.0",
-  "description": "Short-term financing assured on the XRP Ledger. XLS-65 (Single Asset Vault) + XLS-66 (Lending Protocol) + XLS-85 (TokenEscrow).",
-  "main": "index.js",
+  "name": "ayze-monorepo",
+  "private": true,
+  "workspaces": [
+    "ayze_src",
+    "frontend"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "check": "tsc --noEmit",
-    "accounts": "tsx ayze_src/accounts.ts",
-    "token": "tsx ayze_src/token.ts",
-    "vault": "tsx ayze_src/vault.ts",
-    "deposit": "tsx ayze_src/deposit.ts",
-    "check-vault": "tsx ayze_src/checkVault.ts",
-    "broker": "tsx ayze_src/broker.ts",
-    "cover": "tsx ayze_src/cover.ts",
-    "loan": "tsx ayze_src/loan.ts",
-    "repay": "tsx ayze_src/repay.ts",
-    "guardrail": "tsx ayze_src/guardrail.ts",
-    "withdraw": "tsx ayze_src/withdraw.ts",
-    "escrow": "tsx ayze_src/escrow.ts",
-    "insurance": "tsx ayze_src/insurance.ts",
-    "add-insurer": "tsx ayze_src/addInsurer.ts",
-    "default": "tsx ayze_src/default.ts",
-    "claim-insurance": "tsx ayze_src/claimInsurance.ts"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Keuchnotkush/AYZE.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/Keuchnotkush/AYZE/issues"
-  },
-  "homepage": "https://github.com/Keuchnotkush/AYZE#readme",
-  "dependencies": {
-    "five-bells-condition": "^5.0.1",
-    "xrpl": "^5.2.0"
-  },
-  "devDependencies": {
-    "@types/node": "^22.20.2",
-    "tsx": "^4.23.13",
-    "typescript": "^7.0.2"
+    "dev": "npm run dev -w frontend",
+    "build": "npm run build -w frontend",
+    "check": "npm run check -w ayze_src && npm run lint -w frontend",
+    "setup": "npm run accounts -w ayze_src && npm run token -w ayze_src && npm run vault -w ayze_src && npm run deposit -w ayze_src && npm run broker -w ayze_src && npm run cover -w ayze_src && npm run loan -w ayze_src && npm run insurance -w ayze_src && npm run escrow -w ayze_src"
   }
 }

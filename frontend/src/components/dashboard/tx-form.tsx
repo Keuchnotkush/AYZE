@@ -1,0 +1,103 @@
+"use client";
+
+import { useActionState } from "react";
+import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
+import { txUrl } from "@/lib/format";
+import type { ActionResult } from "@/server/actions";
+
+type TxAction = (prev: ActionResult, formData: FormData) => Promise<ActionResult>;
+
+type FieldSpec = {
+  name: string;
+  label: string;
+  placeholder?: string;
+  hint?: string;
+  required?: boolean;
+  defaultValue?: string;
+  type?: "text" | "number";
+};
+
+type TxFormProps = {
+  action: TxAction;
+  className?: string;
+  inline?: boolean;
+  fields?: FieldSpec[];
+  hidden?: Record<string, string>;
+  submitLabel: string;
+  pendingLabel?: string;
+  variant?: "primary" | "outline" | "contrast";
+  disabled?: boolean;
+  disabledReason?: string;
+};
+
+/** Form bound to a Server Action; shows the ledger outcome under the button. */
+export function TxForm({
+  action,
+  fields = [],
+  hidden = {},
+  submitLabel,
+  pendingLabel = "Submitting…",
+  variant = "primary",
+  disabled,
+  disabledReason,
+  className,
+  inline,
+}: TxFormProps) {
+  const [state, formAction, pending] = useActionState(action, null);
+
+  return (
+    <form action={formAction} className={className ?? (inline ? "flex flex-col gap-2" : "flex flex-col gap-3")}>
+      {Object.entries(hidden).map(([name, value]) => (
+        <input key={name} type="hidden" name={name} value={value} />
+      ))}
+      {fields.map((field) => (
+        <Field
+          key={field.name}
+          name={field.name}
+          label={field.label}
+          placeholder={field.placeholder}
+          hint={field.hint}
+          required={field.required}
+          defaultValue={field.defaultValue}
+          type={field.type ?? "text"}
+          inputMode="decimal"
+          autoComplete="off"
+        />
+      ))}
+      <Button type="submit" variant={variant} disabled={pending || disabled} title={disabled ? disabledReason : undefined}>
+        {pending ? pendingLabel : submitLabel}
+      </Button>
+      {disabled && disabledReason && <p className="text-xs text-ink/60">{disabledReason}</p>}
+      <TxResult state={state} />
+    </form>
+  );
+}
+
+export function TxResult({ state }: { state: ActionResult }) {
+  if (!state) return null;
+  return (
+    <div
+      role="status"
+      className={
+        state.ok
+          ? "flex flex-col gap-1 rounded-control bg-emerald-500/10 px-3 py-2 text-sm text-emerald-800"
+          : "flex flex-col gap-1 rounded-control bg-red-500/10 px-3 py-2 text-sm text-red-800"
+      }
+    >
+      <span>
+        {!state.ok && <code className="mr-2 rounded bg-red-500/15 px-1.5 py-0.5 text-xs font-semibold">{state.code}</code>}
+        {state.message}
+      </span>
+      {state.hashes.length > 0 && (
+        <span className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-xs">
+          {state.hashes.map((hash) => (
+            <a key={hash} href={txUrl(hash)} target="_blank" rel="noreferrer" className="underline underline-offset-4">
+              {hash.slice(0, 10)}…
+            </a>
+          ))}
+        </span>
+      )}
+    </div>
+  );
+}
