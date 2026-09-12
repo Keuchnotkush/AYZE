@@ -6,7 +6,7 @@ const client = new Client(
 );
 
 const accounts = JSON.parse(
-    fs.readFileSync("accounts.json", "utf8")
+    fs.readFileSync("state/accounts.json", "utf8")
 );
 
 

@@ -6,11 +6,11 @@ const client = new Client(
 );
 
 const accounts = JSON.parse(
-    fs.readFileSync("accounts.json", "utf8")
+    fs.readFileSync("state/accounts.json", "utf8")
 );
 
 const escrowFile = JSON.parse(
-    fs.readFileSync("escrow.json", "utf8")
+    fs.readFileSync("state/escrow.json", "utf8")
 );
 
 // escrow.ts writes one escrow per scheduled payment
@@ -260,7 +260,7 @@ async function main() {
 
 
         fs.writeFileSync(
-            "escrow.json",
+            "state/escrow.json",
 
             JSON.stringify(
                 escrow,

@@ -6,11 +6,11 @@ const client = new xrpl.Client(
 );
 
 const accounts = JSON.parse(
-    fs.readFileSync("accounts.json", "utf8")
+    fs.readFileSync("state/accounts.json", "utf8")
 );
 
 const broker = JSON.parse(
-    fs.readFileSync("broker.json", "utf8")
+    fs.readFileSync("state/broker.json", "utf8")
 );
 
 // ============================================
@@ -344,7 +344,7 @@ async function main() {
         );
 
         fs.writeFileSync(
-            "loan.json",
+            "state/loan.json",
             JSON.stringify(
                 {
                     loanID,

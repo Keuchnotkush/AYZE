@@ -4,11 +4,11 @@ import fs from "fs";
 const client = new Client("wss://lending-hackathon.dev.ripplex.io:51233");
 
 const accounts = JSON.parse(
-    fs.readFileSync("accounts.json", "utf8")
+    fs.readFileSync("state/accounts.json", "utf8")
 );
 
 const vault = JSON.parse(
-    fs.readFileSync("vault.json", "utf8")
+    fs.readFileSync("state/vault.json", "utf8")
 );
 
 async function main() {

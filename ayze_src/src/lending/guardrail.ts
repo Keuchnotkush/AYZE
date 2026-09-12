@@ -6,11 +6,11 @@ const client = new xrpl.Client(
 );
 
 const accounts = JSON.parse(
-    fs.readFileSync("accounts.json", "utf8")
+    fs.readFileSync("state/accounts.json", "utf8")
 );
 
 const loanData = JSON.parse(
-    fs.readFileSync("loan.json", "utf8")
+    fs.readFileSync("state/loan.json", "utf8")
 );
 
 async function ledgerTime(): Promise<number> {

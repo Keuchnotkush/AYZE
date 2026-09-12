@@ -7,7 +7,7 @@ async function main() {
     await client.connect();
 
     const accounts = JSON.parse(
-        fs.readFileSync("accounts.json", "utf8")
+        fs.readFileSync("state/accounts.json", "utf8")
     );
 
     if (accounts.insurer) {
@@ -24,7 +24,7 @@ async function main() {
     };
 
     fs.writeFileSync(
-        "accounts.json",
+        "state/accounts.json",
         JSON.stringify(accounts, null, 2)
     );
 

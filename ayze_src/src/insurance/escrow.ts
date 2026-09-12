@@ -8,11 +8,11 @@ const client = new Client(
 );
 
 const accounts = JSON.parse(
-    fs.readFileSync("accounts.json", "utf8")
+    fs.readFileSync("state/accounts.json", "utf8")
 );
 
 const loan = JSON.parse(
-    fs.readFileSync("loan.json", "utf8")
+    fs.readFileSync("state/loan.json", "utf8")
 );
 
 const INSURANCE_RATE = 0.30;
@@ -669,7 +669,7 @@ async function main() {
 
 
         fs.writeFileSync(
-            "escrow.json",
+            "state/escrow.json",
 
             JSON.stringify(
                 escrowData,

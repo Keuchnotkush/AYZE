@@ -17,7 +17,7 @@ Actions, one view per role, custodial demo wallets. Verified end-to-end (see `CH
 
 ## M2 — Marketplace V1 🔨
 
-Design: `docs/superpowers/specs/2026-09-12-marketplace-v1-design.md` (awaiting review).
+Design: `docs/specs/2026-09-12-marketplace-v1-design.md` (awaiting review).
 
 Goal: several vaults, several loans, four roles matched through the vault, fixed RBAC, and the
 AYZE economics expressed in integer basis points. Nothing gets optimized before this runs.

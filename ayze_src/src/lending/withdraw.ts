@@ -6,11 +6,11 @@ const client = new xrpl.Client(
 );
 
 const accounts = JSON.parse(
-    fs.readFileSync("accounts.json", "utf8")
+    fs.readFileSync("state/accounts.json", "utf8")
 );
 
 const vaultData = JSON.parse(
-    fs.readFileSync("vault.json", "utf8")
+    fs.readFileSync("state/vault.json", "utf8")
 );
 
 async function getUSDBalance(

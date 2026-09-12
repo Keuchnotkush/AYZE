@@ -263,7 +263,7 @@ async function main() {
         };
 
         fs.writeFileSync(
-            "accounts.json",
+            "state/accounts.json",
 
             JSON.stringify(
                 accounts,

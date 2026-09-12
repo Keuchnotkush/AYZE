@@ -11,7 +11,7 @@ A lender financing a business never loses more than **10% of their claim**, beca
 
 
 
-<img src="assets/flow.png" alt="drawing" width="500"/>
+<img src="docs/assets/flow.png" alt="drawing" width="500"/>
 
 The broker deposits 90% of the debt as first-loss. On default, the ledger automatically pays that 90% to the vault. The insurer then reimburses 30% to the broker via the escrow ladder, bringing their net loss down to 60%. It's a CDS, with the broker as protection buyer.
 
@@ -25,7 +25,7 @@ npm run setup               # accounts → token → vault → deposit → broke
 npm run dev                 # dashboard on http://localhost:3000
 ```
 
-`npm run setup` writes `accounts.json`, `vault.json`, `broker.json`, `loan.json` and `escrow.json` into `ayze_src/`.
+`npm run setup` writes `accounts.json`, `vault.json`, `broker.json`, `loan.json` and `escrow.json` into `ayze_src/state/`.
 The dashboard reads those files and the validated ledger on every render; the demo wallets are custodial
 (seeds stay server-side), and logging in as a role acts with that role's wallet.
 
@@ -47,9 +47,18 @@ The dashboard reads those files and the validated ledger on every render; the de
 ## Structure
 
 ```
-ayze_src/          XRPL scripts, one per protocol step; state in *.json (git-ignored)
-frontend/
-  src/server/      server-only: xrpl client, state files, ledger reads, Server Actions
-  src/app/dashboard/_views/   one view per role (lender, borrower, broker, protection seller)
-  src/components/  ui/ (design system) and dashboard/ (stats, tx forms)
+ayze_src/                 @ayze/protocol — XRPL scripts, one per protocol step
+  src/setup/              accounts · token · vault · deposit · checkVault
+  src/lending/            broker · cover · loan · repay · withdraw · guardrail
+  src/insurance/          insurance · addInsurer · escrow · default · claimInsurance
+  state/                  *.json written by the scripts (git-ignored)
+frontend/                 Next.js dashboard
+  src/app/(app)/          one route per role: dashboard · borrower · broker · market · protect
+  src/server/             server-only: xrpl client, registry, ledger reads, Server Actions
+  src/components/         ui/ (design system) and dashboard/ (stats, tx forms)
+  data/                   registry.json · platform.json (git-ignored)
+docs/
+  specs/                  design specs
+  assets/                 diagrams
+xrpl-devex-hook/          git submodule (RippleDevRel) — agent skills symlinked from .claude/ .codex/ .cursor/ .grok/
 ```

@@ -1,0 +1,3 @@
+[submodule "xrpl-devex-hook"]
+	path = xrpl-devex-hook
+	url = https://github.com/RippleDevRel/xrpl-devex-hook.git

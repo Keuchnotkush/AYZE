@@ -25,7 +25,7 @@ const client =
 const accounts =
     JSON.parse(
         fs.readFileSync(
-            "accounts.json",
+            "state/accounts.json",
             "utf8"
         )
     );
@@ -33,7 +33,7 @@ const accounts =
 const loanData =
     JSON.parse(
         fs.readFileSync(
-            "loan.json",
+            "state/loan.json",
             "utf8"
         )
     );
@@ -41,7 +41,7 @@ const loanData =
 const brokerData =
     JSON.parse(
         fs.readFileSync(
-            "broker.json",
+            "state/broker.json",
             "utf8"
         )
     );
@@ -49,7 +49,7 @@ const brokerData =
 const vaultData =
     JSON.parse(
         fs.readFileSync(
-            "vault.json",
+            "state/vault.json",
             "utf8"
         )
     );
@@ -1311,7 +1311,7 @@ async function main() {
 
 
             fs.writeFileSync(
-                "repayment.json",
+                "state/repayment.json",
 
                 JSON.stringify(
                     evidence,

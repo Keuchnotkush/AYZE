@@ -4,6 +4,16 @@ All notable changes to AYZE. Dates are the day the change landed in the working 
 
 ## [Unreleased] — 2026-09-12
 
+### Changed — repository layout
+
+- `ayze_src/` scripts grouped by phase under `src/setup/`, `src/lending/`, `src/insurance/`;
+  runtime JSON (`accounts.json`, `vault.json`, …) now written to `ayze_src/state/` (git-ignored,
+  `.gitkeep` tracked). `package.json` scripts and every `readFileSync`/`writeFileSync` path updated.
+- `docs/superpowers/specs/` → `docs/specs/`; `assets/` → `docs/assets/`.
+- `frontend/README.md` (create-next-app boilerplate) removed; root `README.md` structure section rewritten.
+- `.gitmodules` added for `xrpl-devex-hook` (was a bare gitlink, unresolvable on clone).
+- `.gitignore`: per-file JSON list replaced by `ayze_src/state/*`.
+
 ### Added
 
 - **Monorepo** — root `package.json` with npm workspaces `ayze_src` (protocol scripts) and
@@ -28,7 +38,7 @@ All notable changes to AYZE. Dates are the day the change landed in the working 
   Action showing hash + explorer link or ledger error), `TxButton`, `Address`, `EscrowTable`,
   `LoanStatusBadge`. Formatting helpers in `src/lib/format.ts` (USD, %, ripple epoch, explorer URLs).
 - `frontend/.env.example` (`XRPL_WSS`, `AYZE_STATE_DIR`, `NEXT_PUBLIC_XRPL_EXPLORER`).
-- `docs/superpowers/specs/2026-09-12-marketplace-v1-design.md` — design of the next version
+- `docs/specs/2026-09-12-marketplace-v1-design.md` — design of the next version
   (marketplace of vaults, fixed RBAC, XLS-70 KYC credential, bps economics). See `ROADMAP.md`.
 - `ROADMAP.md`, this `CHANGELOG.md`.
 

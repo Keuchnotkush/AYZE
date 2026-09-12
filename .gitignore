@@ -17,17 +17,9 @@ build/
 .env.*
 !.env.example
 
-# AYZE sensitive / runtime data
-accounts.json
-vault.json
-broker.json
-loan.json
-cover.json
-deposit.json
-repayment.json
-escrow.json
-guardrail.json
-withdraw.json
+# AYZE runtime state (wallet seeds, vault / loan / escrow ids)
+ayze_src/state/*
+!ayze_src/state/.gitkeep
 
 # =========================
 # macOS

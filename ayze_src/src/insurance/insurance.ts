@@ -5,7 +5,7 @@ const client =
     new Client("wss://lending-hackathon.dev.ripplex.io:51233");
 
 const accounts =
-    JSON.parse(fs.readFileSync("accounts.json", "utf8"));
+    JSON.parse(fs.readFileSync("state/accounts.json", "utf8"));
 
 const INSURER_CAPITAL = "1000";
 

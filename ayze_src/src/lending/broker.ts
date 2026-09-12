@@ -10,11 +10,11 @@ const client = new Client(
 );
 
 const accounts = JSON.parse(
-    fs.readFileSync("accounts.json", "utf8")
+    fs.readFileSync("state/accounts.json", "utf8")
 );
 
 const vault = JSON.parse(
-    fs.readFileSync("vault.json", "utf8")
+    fs.readFileSync("state/vault.json", "utf8")
 );
 
 async function main() {
@@ -298,7 +298,7 @@ async function main() {
         };
 
         fs.writeFileSync(
-            "broker.json",
+            "state/broker.json",
             JSON.stringify(
                 brokerData,
                 null,
