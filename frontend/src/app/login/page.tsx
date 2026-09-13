@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Wordmark } from "@/components/ui/wordmark";
+import { XRPL_WSS } from "@/server/env";
 import { AuthForm } from "./auth-form";
 
 export const metadata: Metadata = { title: "Log in · AYZE" };
@@ -12,7 +13,7 @@ export default function LoginPage() {
         <Link href="/" className="self-start rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-olympic">
           <Wordmark className="text-3xl" />
         </Link>
-        <AuthForm />
+        <AuthForm xrplWss={XRPL_WSS} />
       </div>
     </main>
   );
