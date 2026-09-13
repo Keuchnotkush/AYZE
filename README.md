@@ -1,5 +1,5 @@
 # AYZE
-
+presentation slides links : https://canva.link/t36fx5tf11yl1g5
 Marketplace of lending vaults on the XRP Ledger. A broker opens a vault and posts first-loss
 cover, lenders fund it, borrowers draw fixed tickets against it, and broker-accredited
 protection sellers guarantee individual loans with conditional escrows. Everything settles in
