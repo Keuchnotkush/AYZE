@@ -10,7 +10,7 @@ explorer at `https://custom.xrpl.org/lending-hackathon.dev.ripplex.io`).
 
 | | |
 |---|---|
-| **Track** | Lending — XLS-65 Single Asset Vault + XLS-66 Lending Protocol (with XLS-70 Credentials and native Escrow) |
+| **Track 1 Open Ended  Loaded** | Lending — XLS-65 Single Asset Vault + XLS-66 Lending Protocol (with XLS-70 Credentials and native Escrow) |
 | **Team** | [@0x7manny](https://github.com/0x7manny) · [@0x11semprez](https://github.com/0x11semprez) · [@Keuchnotkush](https://github.com/Keuchnotkush) |
 | **Environment** | lending-hackathon devnet (standalone rippled with the Lending amendments); demo wallets funded from the devnet genesis |
 | **Libraries** | `xrpl` 5.2.0 (xrpl.js) · Next.js 16.3.5 · React 19.2 · Node 22 in Docker |
