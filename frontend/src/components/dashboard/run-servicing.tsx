@@ -17,7 +17,7 @@ export function RunServicing({ className }: { className?: string }) {
         const res = await fetch("/api/servicing/run", { method: "POST", cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const r = (await res.json()) as ServicingReport;
-        setSummary(`${r.paid.length} paid · ${r.failed.length} failed · ${r.defaulted.length} defaulted · ${r.released.length} released${r.errors.length ? ` · ${r.errors.length} errors` : ""}`);
+        setSummary(`${r.paid.length} paid · ${r.failed.length} failed · ${r.defaulted.length} defaulted · ${r.released.length} released${r.fees.length ? ` · ${r.fees.length} fees collected` : ""}${r.errors.length ? ` · ${r.errors.length} errors` : ""}`);
         router.refresh();
       } catch (e) {
         setSummary(e instanceof Error ? e.message : String(e));

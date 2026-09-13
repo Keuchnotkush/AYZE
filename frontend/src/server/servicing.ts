@@ -3,7 +3,7 @@ import type { EscrowCancel } from "xrpl";
 import { AyzeError } from "./errors";
 import { claimInsurance } from "./guarantees";
 import { ledgerTime } from "./ledger";
-import { declareDefault, payInstalment } from "./loans";
+import { collectAyzeFee, declareDefault, payInstalment } from "./loans";
 import { ayzeWallet, ensurePlatform } from "./platform";
 import { findUser, readRegistry, updateRegistry, type Loan } from "./registry";
 import { submit } from "./xrpl";
@@ -22,6 +22,8 @@ export type ServicingReport = {
   failed: Array<{ loanId: string; index: number; error: string }>;
   defaulted: Array<{ loanId: string; missedIndex: number; hash: string; claimed: string[] }>;
   released: Array<{ loanId: string; index: number; hash: string }>;
+  /** AYZE origination fees collected late (the Payment failed at borrow time). */
+  fees: Array<{ loanId: string; hash: string }>;
   errors: Array<{ loanId: string; error: string }>;
 };
 
@@ -92,6 +94,23 @@ async function autoDefault(loan: Loan, now: number, report: ServicingReport) {
   console.info(`[servicing] auto-default loan=${loan.id} #${result.missedIndex} ${result.hash}`);
 }
 
+/** (d) Fee: the 0.5 % origination Payment that failed at borrow time, retried until it validates. */
+async function collectFee(loan: Loan, report: ServicingReport) {
+  if (loan.txHashes.ayzeFee || loan.status === "closed") return;
+  try {
+    const hash = await collectAyzeFee(loan);
+    report.fees.push({ loanId: loan.id, hash });
+    console.info(`[servicing] AYZE fee collected loan=${loan.id} ${hash}`);
+  } catch (error) {
+    const reason = message(error);
+    await updateRegistry((r) => {
+      const target = r.loans.find((l) => l.id === loan.id);
+      if (target) target.ayzeFeeError = reason;
+    });
+    console.warn(`[servicing] AYZE fee still pending loan=${loan.id}: ${reason}`);
+  }
+}
+
 /** (c) Release: EscrowCancel by the platform once CancelAfter has passed and the cover is no longer needed. */
 async function release(loan: Loan, now: number, report: ServicingReport) {
   if (!loan.guarantee) return;
@@ -140,9 +159,10 @@ export function runServicing(): Promise<ServicingReport> {
 
 async function pass(): Promise<ServicingReport> {
   const now = await ledgerTime();
-  const report: ServicingReport = { ranAt: new Date().toISOString(), ledgerTime: now, paid: [], failed: [], defaulted: [], released: [], errors: [] };
+  const report: ServicingReport = { ranAt: new Date().toISOString(), ledgerTime: now, paid: [], failed: [], defaulted: [], released: [], fees: [], errors: [] };
   for (const loan of readRegistry().loans) {
     try {
+      await collectFee(loan, report);
       if (loan.status === "active") {
         await debit(loan, now, report);
         await autoDefault(loan, now, report);

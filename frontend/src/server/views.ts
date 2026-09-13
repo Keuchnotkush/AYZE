@@ -139,6 +139,8 @@ export type LoanView = {
   defaultedBy: Loan["defaultedBy"] | null;
   coverAvailable: number;
   txHashes: Loan["txHashes"];
+  /** Set while the 0.5 % AYZE fee Payment has not validated yet (retried by servicing). */
+  ayzeFeePending: string | null;
   createdAt: string;
 };
 
@@ -211,6 +213,7 @@ export async function loanView(input: Loan): Promise<LoanView> {
     defaultedBy: loan.status === "defaulted" || loan.status === "closed" ? (loan.defaultedBy ?? (loan.missedIndex !== undefined ? "broker" : null)) : null,
     coverAvailable: toNumber(brokerState?.coverAvailable ?? 0n),
     txHashes: loan.txHashes,
+    ayzeFeePending: loan.txHashes.ayzeFee || loan.status === "closed" ? null : (loan.ayzeFeeError ?? "pending"),
     createdAt: loan.createdAt,
   };
 }

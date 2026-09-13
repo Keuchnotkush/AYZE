@@ -41,7 +41,6 @@ export async function borrow(borrower: User, vault: Vault, terms: Terms): Promis
   if (invalid) throw new AyzeError("AYZE_INVALID_TERMS", invalid);
   await assertVaultAccess(borrower, vault);
 
-  const platform = await ensurePlatform();
   const broker = findUser(vault.brokerId);
   if (!broker) throw new AyzeError("AYZE_NOT_FOUND", "Broker not found.");
   const state = await getVaultState(vault.vaultID);
@@ -110,14 +109,45 @@ export async function borrow(borrower: User, vault: Vault, terms: Terms): Promis
   };
   await updateRegistry((r) => r.loans.push(loan));
 
-  // 2. AYZE origination fee (0.5 %) — recorded even if it fails after the loan exists.
-  const feeTx = await sendXRP(borrowerWallet, platform.ayze.address, fee);
-  loan.txHashes.ayzeFee = feeTx.hash;
+  // 2. AYZE origination fee (0.5 %). The loan is live whatever happens here: a failure is
+  // recorded on the loan and the servicing loop retries until the Payment validates.
+  try {
+    loan.txHashes.ayzeFee = await collectAyzeFee(loan);
+  } catch (error) {
+    const reason = error instanceof AyzeError ? `${error.code}: ${error.message}` : error instanceof Error ? error.message : String(error);
+    console.warn(`[loans] AYZE fee deferred loan=${loan.id}: ${reason}`);
+    await updateRegistry((r) => {
+      const target = r.loans.find((l) => l.id === loan.id);
+      if (target) target.ayzeFeeError = reason;
+    });
+  }
+  return { loan, hashes: loan.txHashes };
+}
+
+/**
+ * Sends the 0.5 % origination fee (borrower → AYZE) for a loan that does not have it yet and
+ * returns the Payment hash. Idempotent: a loan whose `txHashes.ayzeFee` is set returns it as is.
+ * Skips the submit when the borrower cannot cover the fee after reserve, so a retry loop never
+ * burns transaction fees on tecUNFUNDED.
+ */
+export async function collectAyzeFee(loan: Loan): Promise<string> {
+  if (loan.txHashes.ayzeFee) return loan.txHashes.ayzeFee;
+  const borrower = findUser(loan.borrowerId);
+  if (!borrower) throw new AyzeError("AYZE_NOT_FOUND", "Borrower not found.");
+  const platform = await ensurePlatform();
+  const wallet = walletOf(borrower);
+  const fee = ayzeFeeOf(BigInt(loan.principal));
+  const spendable = await getSpendableBalance(wallet.address);
+  if (spendable < fee) throw new AyzeError("AYZE_INSUFFICIENT_FUNDS", `The AYZE fee is ${dropsToXrp(fee)} XRP; wallet can spend ${dropsToXrp(spendable)} (after reserve).`);
+  const { hash } = await sendXRP(wallet, platform.ayze.address, fee);
   await updateRegistry((r) => {
     const target = r.loans.find((l) => l.id === loan.id);
-    if (target) target.txHashes.ayzeFee = feeTx.hash;
+    if (target) {
+      target.txHashes.ayzeFee = hash;
+      delete target.ayzeFeeError;
+    }
   });
-  return { loan, hashes: loan.txHashes };
+  return hash;
 }
 
 /* ------------------------------------------------------------------ */

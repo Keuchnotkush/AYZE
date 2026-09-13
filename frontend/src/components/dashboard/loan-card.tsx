@@ -55,6 +55,11 @@ export function LoanCard({ loan, show = ["borrower", "vault", "seller"], actions
             {loan.paymentTotal} × {fmtXRP(loan.principal / loan.paymentTotal)} every {loan.paymentInterval}s · grace {loan.gracePeriod}s · 6 % interest ({fmtXRP(loan.interestTotal)}) · auto-debit
             {loan.defaultedBy && <> · defaulted by {loan.defaultedBy === "auto" ? "servicing" : "broker"}</>}
           </span>
+          {loan.ayzeFeePending && (
+            <span className="text-xs text-amber-700" title={loan.ayzeFeePending}>
+              AYZE fee not collected yet — retried by servicing ({loan.ayzeFeePending})
+            </span>
+          )}
           <span className="flex flex-wrap gap-x-3 text-xs text-ink/60">
             {show.includes("vault") && <span>Vault {loan.vault.name}</span>}
             {show.includes("borrower") && <span>Borrower {loan.borrower.company} <Address value={loan.borrower.address} /></span>}

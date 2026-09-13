@@ -98,6 +98,8 @@ export type Loan = {
   defaultedBy?: "auto" | "broker";
   guarantee?: Guarantee;
   txHashes: { loanBrokerSet?: string; coverDeposit?: string; loanSet: string; ayzeFee?: string };
+  /** Why the last AYZE fee attempt failed; cleared once `txHashes.ayzeFee` is set. */
+  ayzeFeeError?: string;
   createdAt: string;
 };
 

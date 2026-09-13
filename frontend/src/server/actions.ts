@@ -245,7 +245,7 @@ export async function borrowAction(_prev: ActionResult, formData: FormData): Pro
     };
     const { loan, hashes } = await borrow(borrower, vault, terms);
     return {
-      message: `Loan of ${dropsToXrp(BigInt(loan.principal))} XRP drawn from ${vault.name} in ${loan.paymentTotal} instalments (grace ${loan.gracePeriod}s, auto-debited).`,
+      message: `Loan of ${dropsToXrp(BigInt(loan.principal))} XRP drawn from ${vault.name} in ${loan.paymentTotal} instalments (grace ${loan.gracePeriod}s, auto-debited).${hashes.ayzeFee ? "" : " AYZE fee not collected yet; servicing will retry."}`,
       hashes: [hashes.loanSet, ...(hashes.ayzeFee ? [hashes.ayzeFee] : [])],
     };
   }, ["/borrower", "/market", "/broker", "/protect"]);
