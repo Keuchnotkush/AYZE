@@ -20,12 +20,10 @@ docs/
 │   └── platform.md                  AYZE, the implicit actor (platform wallet)
 ├── amendments/                      one folder per XRPL amendment in use
 │   ├── README.md                    matrix amendment → transaction → function → file
+│   │                                (also covers native Escrow and Payment)
 │   ├── xls65/                       Single Asset Vault
 │   ├── xls66/                       Lending Protocol
-│   ├── xls70/                       Credentials (KYC)
-│   ├── xls33/                       Multi-Purpose Tokens (vault shares)
-│   ├── escrow/                      Native XRP Escrow + crypto-conditions (insurance)
-│   └── payment/                     Native XRP Payment (funding, fee, interest)
+│   └── xls70/                       Credentials (stand-in for KYC, no provider)
 ├── specs/
 │   └── 2026-09-12-marketplace-v1-design.md   marketplace V1 design
 └── assets/
