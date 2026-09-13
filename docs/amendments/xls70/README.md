@@ -1,0 +1,63 @@
+# XLS-70 — Credentials
+
+Credentials stand in for KYC. **There is no KYC provider in this demo**: AYZE does no off-chain check
+and the broker sets no conditions. The point is to exercise the XLS-70 flow — issue, accept, verify on
+the ledger — with credentials that are granted unconditionally to any borrower who asks. What the
+ledger proves is *that* the credential was issued and accepted, not *why*.
+
+Two credentials are required to draw from a vault:
+
+| Credential | `CredentialType` (hex of) | Issuer | Meaning in a real deployment |
+|---|---|---|---|
+| `AYZE_KYC` | `"AYZE_KYC"` | AYZE platform wallet (`platform.json`) | the borrower passed the platform's KYC |
+| `VAULT_<id>` | `"VAULT_" + first 16 hex chars of the VaultID` (22 bytes, limit 64) | the vault's broker | the borrower meets this broker's conditions |
+
+Files: `frontend/src/server/credentials.ts`, `ledger.ts › hasCredential`, `loans.ts › borrow`.
+
+## Transactions
+
+### `CredentialCreate` then `CredentialAccept` — `credentials.ts › issueAndAccept`
+
+Trigger: `beVerifiedAction`, button **Be verified** on a vault card (`/market`, borrower view).
+`verifyBorrowerForVault` calls `issueAndAccept` twice — AYZE first, then the broker — skipping a
+credential the borrower already holds (`hasCredential`).
+
+| Step | Signer | Fields |
+|---|---|---|
+| `CredentialCreate` | issuer (AYZE or broker) | `Subject` = borrower, `CredentialType` |
+| `CredentialAccept` | borrower | `Issuer`, `CredentialType` |
+
+Both signers are custodial (seeds in `registry.json` / `platform.json`), which is what makes the
+"issue and accept in one click" flow possible. `tecDUPLICATE` on the create is tolerated so an
+issued-but-never-accepted credential can still be accepted. No `Expiration`, no `URI`.
+
+Result: 4 transaction hashes on first verification, 0 or 2 afterwards. The registry mirrors the state
+(`User.credentials[]`, `Vault.verifiedBorrowers[]`) for display and as a fallback.
+
+## Reads
+
+### `ledger.ts › hasCredential(subject, issuer, credentialType)`
+
+`ledger_entry` with `credential: { subject, issuer, credential_type }` (snake_case — rippled's shape,
+the xrpl.js type says `credentialType`). True when the entry exists **and** `Flags & lsfAccepted`
+(`0x00010000`): an issued-but-unaccepted credential does not count. `entryNotFound` → false, matched
+on `error.data.error` (`isRippledError`).
+
+### `credentials.ts › hasVaultAccess / assertVaultAccess`
+
+Both checks in parallel; the registry mirror is used only when the RPC itself fails. `assertVaultAccess`
+throws `AYZE_KYC_REQUIRED` and is the first check in `loans.ts › borrow`; `/market` also disables the
+Borrow button and shows a **Verified** badge from the same read.
+
+## Enforcement is application-side
+
+The vault is public and `LoanSet` has no credential requirement of its own, so the ledger does not
+block an unverified borrower — `borrow()` does. Making the ledger enforce it would take XLS-80
+(`PermissionedDomainSet` with `AcceptedCredentials = [{ Issuer: AYZE, CredentialType: AYZE_KYC }]`,
+then `VaultCreate` with `tfVaultPrivate` + `DomainID`), which also means the lenders would need the
+credential to deposit. Out of scope while there is no real KYC behind the credential.
+
+## Not used
+
+`CredentialDelete`, `Expiration` (and the matching check against ledger time), `URI`,
+`DepositPreauth` with `AuthorizeCredentials`, permissioned domains.
