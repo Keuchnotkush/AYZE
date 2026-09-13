@@ -8,6 +8,16 @@ protection sellers guarantee individual loans with conditional escrows. Everythi
 Runs against the XRPL lending-hackathon devnet (`wss://lending-hackathon.dev.ripplex.io:51233`,
 explorer at `https://custom.xrpl.org/lending-hackathon.dev.ripplex.io`).
 
+| | |
+|---|---|
+| **Track** | Lending — XLS-65 Single Asset Vault + XLS-66 Lending Protocol (with XLS-70 Credentials and native Escrow) |
+| **Team** | [@0x7manny](https://github.com/0x7manny) · [@0x11semprez](https://github.com/0x11semprez) · [@Keuchnotkush](https://github.com/Keuchnotkush) |
+| **Environment** | lending-hackathon devnet (standalone rippled with the Lending amendments); demo wallets funded from the devnet genesis |
+| **Libraries** | `xrpl` 5.2.0 (xrpl.js) · Next.js 16.3.5 · React 19.2 · Node 22 in Docker |
+| **Transactions used** | [Ledger mapping](#ledger-mapping); per-amendment detail in [`docs/amendments/`](docs/amendments/README.md) |
+| **Verified run** | [29 validated transactions with explorer links](#verified-run) |
+| **Developer feedback** | [`DEVELOPER-FEEDBACK.pdf`](DEVELOPER-FEEDBACK.pdf) |
+
 ## Roles
 
 | Role | Wallet | Can |
