@@ -80,7 +80,7 @@ export function ExtensionTxForm({ provider, prepare, record, fields = [], hidden
       {fields.map((f) => (
         <Field key={f.name} name={f.name} label={f.label} placeholder={f.placeholder} hint={f.hint} required={f.required} defaultValue={f.defaultValue} type="text" inputMode={f.type === "amount" ? "decimal" : "text"} autoComplete="off" />
       ))}
-      <Button type="submit" variant={variant} disabled={pending || disabled} title={disabled ? disabledReason : undefined}>
+      <Button type="submit" variant={variant} pending={pending} disabled={disabled} title={disabled ? disabledReason : undefined}>
         {pending ? (step ?? "Submitting…") : `${submitLabel} · ${PROVIDER_LABEL[provider]}`}
       </Button>
       {disabled && disabledReason && <p className="text-xs text-ink/60">{disabledReason}</p>}

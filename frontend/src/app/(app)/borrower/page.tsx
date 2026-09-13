@@ -1,9 +1,11 @@
-import Link from "next/link";
+import { HandCoins } from "lucide-react";
 import { AccountActivity } from "@/components/dashboard/account-activity";
+import { EmptyState } from "@/components/dashboard/empty-state";
 import { LoanCard } from "@/components/dashboard/loan-card";
 import { Forbidden } from "@/components/dashboard/forbidden";
-import { Card, Stat } from "@/components/dashboard/stat";
+import { Stat } from "@/components/dashboard/stat";
 import { TxForm } from "@/components/dashboard/tx-form";
+import { ButtonLink } from "@/components/ui/button";
 import { fmtXRP } from "@/lib/format";
 import { payInstalmentAction, repayInFullAction } from "@/server/actions";
 import { pageRole } from "@/server/auth/session";
@@ -29,11 +31,12 @@ export default async function BorrowerPage() {
       </div>
 
       {loans.length === 0 && (
-        <Card>
-          <p className="text-sm text-ink/70">
-            No loan yet. <Link href="/market" className="underline underline-offset-4">Marketplace</Link>
-          </p>
-        </Card>
+        <EmptyState
+          icon={HandCoins}
+          title="No loan yet"
+          hint="Pick a vault on the marketplace, get verified for it, then borrow a 1 000 XRP ticket. Instalments are auto-debited from your wallet."
+          action={<ButtonLink href="/market">Go to the marketplace</ButtonLink>}
+        />
       )}
 
       {loans.map((loan) => {

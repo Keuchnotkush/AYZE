@@ -1,4 +1,6 @@
+import { Store } from "lucide-react";
 import { AccountActivity } from "@/components/dashboard/account-activity";
+import { EmptyState } from "@/components/dashboard/empty-state";
 import { Address } from "@/components/dashboard/address";
 import { Forbidden } from "@/components/dashboard/forbidden";
 import { Badge, Card, Stat } from "@/components/dashboard/stat";
@@ -56,9 +58,11 @@ export default async function MarketPage() {
       </div>
 
       {vaults.length === 0 && (
-        <Card>
-          <p className="text-sm text-ink/70">No vault yet.</p>
-        </Card>
+        <EmptyState
+          icon={Store}
+          title="No vault on the marketplace yet"
+          hint={isLender ? "Brokers haven't opened a vault. Check back soon." : "Brokers haven't opened a vault. Once one is listed you'll get verified for it, then borrow 1 000 XRP."}
+        />
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -75,13 +79,13 @@ export default async function MarketPage() {
                 {vault.canBorrow ? <Badge tone="good">open</Badge> : <Badge tone="neutral">needs liquidity</Badge>}
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <Stat label="Available" value={fmtXRP(vault.assetsAvailable)} hint={`${fmtXRP(vault.assetsTotal)} total`} className="border-0 px-0 py-0" />
-              <Stat label="Loans" value={vault.loans.active} hint={`${vault.loans.repaid} repaid · ${vault.loans.defaulted} defaulted · cover ${fmtXRP(vault.coverAvailable)}`} className="border-0 px-0 py-0" />
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <Stat label="Available" value={fmtXRP(vault.assetsAvailable)} hint={`${fmtXRP(vault.assetsTotal)} total`} plain />
+              <Stat label="Loans" value={vault.loans.active} hint={`${vault.loans.repaid} repaid · ${vault.loans.defaulted} defaulted · cover ${fmtXRP(vault.coverAvailable)}`} plain />
               {isLender ? (
-                <Stat label="My position" value={fmtXRP(positions[vault.id]?.value ?? 0)} hint={`${(positions[vault.id]?.shares ?? 0).toLocaleString()} shares`} className="border-0 px-0 py-0" />
+                <Stat label="My position" value={fmtXRP(positions[vault.id]?.value ?? 0)} hint={`${(positions[vault.id]?.shares ?? 0).toLocaleString()} shares`} plain />
               ) : (
-                <Stat label="Share price" value={vault.pricePerShare.toFixed(4)} className="border-0 px-0 py-0" />
+                <Stat label="Share price" value={vault.pricePerShare.toFixed(4)} plain />
               )}
             </div>
 

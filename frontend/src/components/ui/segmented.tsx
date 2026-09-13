@@ -1,4 +1,4 @@
-import { cn } from "@/lib/cn";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Option<T extends string> = { value: T; label: string };
 
@@ -10,39 +10,17 @@ type SegmentedProps<T extends string> = {
   className?: string;
 };
 
-/** Two-or-more way toggle; the selected segment fills with ink. */
-export function Segmented<T extends string>({
-  label,
-  options,
-  value,
-  onChange,
-  className,
-}: SegmentedProps<T>) {
+/** Two-or-more way toggle (shadcn Tabs used as a control: no panels). */
+export function Segmented<T extends string>({ label, options, value, onChange, className }: SegmentedProps<T>) {
   return (
-    <div
-      role="radiogroup"
-      aria-label={label}
-      className={cn("grid auto-cols-fr grid-flow-col rounded-control border border-ink/25 p-1", className)}
-    >
-      {options.map((option) => {
-        const selected = option.value === value;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            onClick={() => onChange(option.value)}
-            className={cn(
-              "h-9 rounded-[calc(var(--radius-control)-0.25rem)] text-sm font-medium transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-olympic",
-              selected ? "bg-ink text-surface" : "text-ink/70 hover:text-ink",
-            )}
-          >
+    <Tabs value={value} onValueChange={(next) => onChange(next as T)} className={className}>
+      <TabsList aria-label={label} className="grid h-11 w-full auto-cols-fr grid-flow-col">
+        {options.map((option) => (
+          <TabsTrigger key={option.value} value={option.value} className="h-full data-active:font-semibold">
             {option.label}
-          </button>
-        );
-      })}
-    </div>
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   );
 }

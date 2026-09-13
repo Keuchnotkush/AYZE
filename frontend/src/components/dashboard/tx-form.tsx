@@ -73,7 +73,7 @@ export function TxForm({
           autoComplete="off"
         />
       ))}
-      <Button type="submit" variant={variant} disabled={pending || disabled} title={disabled ? disabledReason : undefined}>
+      <Button type="submit" variant={variant} pending={pending} disabled={disabled} title={disabled ? disabledReason : undefined}>
         {pending ? pendingLabel : submitLabel}
       </Button>
       {disabled && disabledReason && <p className="text-xs text-ink/60">{disabledReason}</p>}

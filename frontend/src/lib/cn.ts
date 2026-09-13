@@ -1,4 +1,2 @@
-/** Joins class names, skipping falsy values. */
-export function cn(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
-}
+/** Class-name merge with Tailwind conflict resolution (shadcn's `cn`). */
+export { cn } from "cn";

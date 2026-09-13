@@ -30,7 +30,7 @@ async function login(role) {
 async function register(role, company) {
   await page.context().clearCookies();
   await page.goto(base + "/login");
-  await page.getByRole("radio", { name: "Create account" }).click();
+  await page.getByRole("tab", { name: "Create account" }).click();
   await page.fill("input[name=company]", company);
   await page.fill("input[name=email]", email(role));
   await page.fill("input[name=password]", "demo1234");

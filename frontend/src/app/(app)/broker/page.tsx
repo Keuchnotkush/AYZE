@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { Vault } from "lucide-react";
 import { AccountActivity } from "@/components/dashboard/account-activity";
+import { EmptyState } from "@/components/dashboard/empty-state";
 import { RunServicing } from "@/components/dashboard/run-servicing";
 import { Forbidden } from "@/components/dashboard/forbidden";
 import { Card, Stat } from "@/components/dashboard/stat";
@@ -31,9 +33,7 @@ export default async function BrokerPage() {
       <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
         <div className="flex flex-col gap-3">
           {vaults.length === 0 && (
-            <Card>
-              <p className="text-sm text-ink/70">No vault yet.</p>
-            </Card>
+            <EmptyState icon={Vault} title="No vault yet" hint="Create your first vault on the right. Post 700 XRP of first-loss capital for every loan you want the vault to allow at once." />
           )}
           {vaults.map((vault) => (
             <Link key={vault.id} href={`/broker/vaults/${vault.id}`} className="group rounded-control focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-olympic">
@@ -44,10 +44,10 @@ export default async function BrokerPage() {
                     <p className="text-sm text-ink/60">{vault.description || "—"}</p>
                   </div>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    <Stat label="Liquidity" value={fmtXRP(vault.assetsAvailable)} hint={`${fmtXRP(vault.assetsTotal)} total`} className="border-0 px-0 py-0" />
-                    <Stat label="Cover available" value={fmtXRP(vault.coverAvailable)} hint={vault.loanBrokerID ? `${fmtXRP(vault.coverPosted)} posted` : "no LoanBroker"} className="border-0 px-0 py-0" />
-                    <Stat label="Active loans" value={vault.loans.active} hint={`${vault.loans.repaid} repaid`} className="border-0 px-0 py-0" />
-                    <Stat label="Defaulted" value={vault.loans.defaulted} className="border-0 px-0 py-0" />
+                    <Stat label="Liquidity" value={fmtXRP(vault.assetsAvailable)} hint={`${fmtXRP(vault.assetsTotal)} total`} plain />
+                    <Stat label="Cover available" value={fmtXRP(vault.coverAvailable)} hint={vault.loanBrokerID ? `${fmtXRP(vault.coverPosted)} posted` : "no LoanBroker"} plain />
+                    <Stat label="Active loans" value={vault.loans.active} hint={`${vault.loans.repaid} repaid`} plain />
+                    <Stat label="Defaulted" value={vault.loans.defaulted} plain />
                   </div>
                 </div>
               </Card>
