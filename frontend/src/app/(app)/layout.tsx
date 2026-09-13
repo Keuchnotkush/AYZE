@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { Address } from "@/components/dashboard/address";
 import { Nav, type NavItem } from "@/components/dashboard/nav";
 import { Button } from "@/components/ui/button";
-import { Wordmark } from "@/components/ui/wordmark";
 import { ROLES, type RoleId } from "@/lib/roles";
 import { logout } from "@/server/actions";
 import { currentUser } from "@/server/auth/session";
@@ -29,7 +28,25 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 py-4">
           <div className="flex items-center gap-6">
             <Link href="/dashboard" className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-olympic">
-              <Wordmark className="text-2xl" />
+              <svg
+                viewBox="0 0 270 84"
+                className="h-6 w-auto"
+                role="img"
+                aria-label="AYZE"
+              >
+                <text
+                  x="0"
+                  y="76"
+                  fontFamily="var(--font-sora), ui-sans-serif, system-ui, sans-serif"
+                  fontWeight={700}
+                  fontSize={72}
+                  letterSpacing="-2.88"
+                  fill="currentColor"
+                >
+                  AYZE
+                </text>
+                <circle cx="250" cy="64" r="12" fill="currentColor" />
+              </svg>
             </Link>
             <Nav items={NAV[user.role]} />
           </div>

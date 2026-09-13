@@ -1,18 +1,18 @@
 import "server-only";
-import { toNumber, type Micro } from "./amounts";
+import { shortAddress } from "@/lib/format";
+import { toNumber, type Drops } from "./amounts";
 import { firstLossOf, interestOf, protectionOf, TICKET } from "./economics";
 import { refreshEscrowStatuses } from "./guarantees";
-import { getBrokerState, getLoanState, getShareBalance, getUSDBalance, getVaultState, ledgerTime, type LoanState, type VaultState } from "./ledger";
-import { ensurePlatform } from "./platform";
-import { readRegistry, type Loan, type User, type Vault } from "./registry";
+import { getBrokerState, getLoanState, getShareBalance, getVaultState, getXRPBalance, ledgerTime, type LoanState, type VaultState } from "./ledger";
+import { readRegistry, type EscrowRecord, type InstalmentRecord, type Loan, type User, type Vault } from "./registry";
 
-/* Read models for the pages: registry (matching) + ledger (amounts), plain numbers for React. */
+/* Read models for the pages: registry (matching) + ledger (amounts), plain XRP numbers for React. */
 
-export type WalletView = { address: string; usd: number };
+/** `xrp` is the raw account Balance (reserve included), the figure the explorer shows. */
+export type WalletView = { address: string; xrp: number };
 
 export async function walletView(user: User): Promise<WalletView> {
-  const platform = await ensurePlatform();
-  return { address: user.wallet.address, usd: toNumber(await getUSDBalance(user.wallet.address, platform.issuer.address)) };
+  return { address: user.wallet.address, xrp: toNumber(await getXRPBalance(user.wallet.address)) };
 }
 
 export type VaultView = {
@@ -21,11 +21,19 @@ export type VaultView = {
   name: string;
   description: string;
   broker: { id: string; company: string; address: string };
+  /** Pseudo-account holding the vault's assets on the ledger. */
+  account: string;
+  loanBrokerID: string | null;
+  /** First-loss cover currently available in the vault's LoanBroker. */
+  coverAvailable: number;
+  coverPosted: number;
   assetsTotal: number;
   assetsAvailable: number;
   pricePerShare: number;
   loans: { active: number; repaid: number; defaulted: number };
   canBorrow: boolean;
+  /** Borrowers holding this vault's credential (registry mirror). */
+  verifiedBorrowers: { id: string; company: string; address: string }[];
   createdAt: string;
 };
 
@@ -39,18 +47,29 @@ function loanCounts(vaultID: string) {
 }
 
 async function toVaultView(vault: Vault, state: VaultState | null): Promise<VaultView> {
-  const broker = readRegistry().users.find((u) => u.id === vault.brokerId);
+  const users = readRegistry().users;
+  const broker = users.find((u) => u.id === vault.brokerId);
+  const brokerState = vault.loanBrokerID ? await getBrokerState(vault.loanBrokerID) : null;
+  const verifiedBorrowers = (vault.verifiedBorrowers ?? []).flatMap((id) => {
+    const u = users.find((x) => x.id === id);
+    return u ? [{ id: u.id, company: u.company ?? "—", address: u.wallet.address }] : [];
+  });
   return {
     id: vault.id,
     vaultID: vault.vaultID,
     name: vault.name,
     description: vault.description,
     broker: { id: vault.brokerId, company: broker?.company ?? "?", address: broker?.wallet.address ?? "" },
+    account: state?.account ?? "",
+    loanBrokerID: vault.loanBrokerID ?? null,
+    coverAvailable: toNumber(brokerState?.coverAvailable ?? 0n),
+    coverPosted: toNumber(BigInt(vault.firstLoss ?? "0")),
     assetsTotal: toNumber(state?.assetsTotal ?? 0n),
     assetsAvailable: toNumber(state?.assetsAvailable ?? 0n),
     pricePerShare: state?.pricePerShare ?? 1,
     loans: loanCounts(vault.vaultID),
     canBorrow: (state?.assetsAvailable ?? 0n) >= TICKET,
+    verifiedBorrowers,
     createdAt: vault.createdAt,
   };
 }
@@ -71,6 +90,26 @@ export async function lenderPosition(user: User, vault: Vault): Promise<Position
   return { shares, value: (shares * state.pricePerShare) };
 }
 
+export type InstalmentStatus = "paid" | "upcoming" | "due" | "late" | "defaulted";
+
+export type InstalmentView = {
+  index: number;
+  dueDate: number;
+  principal: number;
+  interest: number;
+  status: InstalmentStatus;
+  txHash: string | null;
+  /** Reason of the last failed auto-debit, when status is "late". */
+  error: string | null;
+};
+
+function instalmentStatus(loan: Loan, i: InstalmentRecord, now: number): InstalmentStatus {
+  if (i.paidTxHash) return "paid";
+  if (loan.status === "defaulted" || (loan.status === "closed" && loan.missedIndex !== undefined)) return "defaulted";
+  if (now < i.dueDate) return "upcoming";
+  return i.lastAttemptError ? "late" : "due";
+}
+
 export type LoanView = {
   id: string;
   loanID: string;
@@ -85,16 +124,19 @@ export type LoanView = {
   paymentInterval: number;
   gracePeriod: number;
   paidCount: number;
+  schedule: InstalmentView[];
   status: Loan["status"];
   ledger: LoanState | null;
   ledgerStatus: LoanState["status"] | "unknown";
   nextDue: { index: number; dueDate: number; principal: number; interest: number; secondsToDue: number; secondsToDefault: number } | null;
   guarantee: {
     seller: { id: string; company: string; address: string };
-    escrows: Array<{ index: number; amount: number; cancelAfter: number; status: string; escrowID: string }>;
+    escrows: Array<{ index: number; amount: number; cancelAfter: number; status: EscrowRecord["status"]; escrowID: string; txHash: string | null }>;
     locked: number;
     claimed: number;
+    released: number;
   } | null;
+  defaultedBy: Loan["defaultedBy"] | null;
   coverAvailable: number;
   txHashes: Loan["txHashes"];
   createdAt: string;
@@ -108,7 +150,7 @@ export async function loanView(input: Loan): Promise<LoanView> {
   const broker = registry.users.find((u) => u.id === loan.brokerId);
   const [ledger, brokerState, now] = await Promise.all([getLoanState(loan.loanID), getBrokerState(loan.loanBrokerID), ledgerTime()]);
   const next = loan.schedule.find((i) => !i.paidTxHash) ?? null;
-  const principal: Micro = BigInt(loan.principal);
+  const principal: Drops = BigInt(loan.principal);
   const seller = loan.guarantee ? registry.users.find((u) => u.id === loan.guarantee?.protectionSellerId) : null;
   const sum = (statuses: string[]) =>
     loan.guarantee?.escrows.filter((e) => statuses.includes(e.status)).reduce((a, e) => a + BigInt(e.amount), 0n) ?? 0n;
@@ -126,6 +168,15 @@ export async function loanView(input: Loan): Promise<LoanView> {
     paymentInterval: loan.paymentInterval,
     gracePeriod: loan.gracePeriod,
     paidCount: loan.schedule.filter((i) => i.paidTxHash).length,
+    schedule: loan.schedule.map((i) => ({
+      index: i.index,
+      dueDate: i.dueDate,
+      principal: toNumber(BigInt(i.principal)),
+      interest: toNumber(BigInt(i.interest)),
+      status: instalmentStatus(loan, i, now),
+      txHash: i.paidTxHash ?? null,
+      error: i.paidTxHash ? null : (i.lastAttemptError ?? null),
+    })),
     status: loan.status,
     ledger,
     ledgerStatus: ledger?.status ?? (loan.status === "closed" ? "deleted" : "unknown"),
@@ -137,18 +188,27 @@ export async function loanView(input: Loan): Promise<LoanView> {
             principal: toNumber(BigInt(next.principal)),
             interest: toNumber(BigInt(next.interest)),
             secondsToDue: next.dueDate - now,
-            secondsToDefault: next.dueDate + loan.gracePeriod - now,
+            secondsToDefault: next.dueDate + (loan.graceSeconds ?? loan.gracePeriod) - now,
           }
         : null,
     guarantee:
       loan.guarantee && seller
         ? {
-            seller: { id: seller.id, company: seller.company, address: seller.wallet.address },
-            escrows: loan.guarantee.escrows.map((e) => ({ index: e.index, amount: toNumber(BigInt(e.amount)), cancelAfter: e.cancelAfter, status: e.status, escrowID: e.escrowID })),
+            seller: { id: seller.id, company: seller.company ?? shortAddress(seller.wallet.address), address: seller.wallet.address },
+            escrows: loan.guarantee.escrows.map((e) => ({
+              index: e.index,
+              amount: toNumber(BigInt(e.amount)),
+              cancelAfter: e.cancelAfter,
+              status: e.status,
+              escrowID: e.escrowID,
+              txHash: e.claimTxHash ?? e.releaseTxHash ?? null,
+            })),
             locked: toNumber(sum(["LOCKED"])),
             claimed: toNumber(sum(["CLAIMED"])),
+            released: toNumber(sum(["RELEASED", "EXPIRED"])),
           }
         : null,
+    defaultedBy: loan.status === "defaulted" || loan.status === "closed" ? (loan.defaultedBy ?? (loan.missedIndex !== undefined ? "broker" : null)) : null,
     coverAvailable: toNumber(brokerState?.coverAvailable ?? 0n),
     txHashes: loan.txHashes,
     createdAt: loan.createdAt,
@@ -158,4 +218,4 @@ export async function loanView(input: Loan): Promise<LoanView> {
 export const loansWhere = (predicate: (l: Loan) => boolean) =>
   Promise.all(readRegistry().loans.filter(predicate).map(loanView));
 
-export const TICKET_USD = toNumber(TICKET);
+export const TICKET_XRP = toNumber(TICKET);

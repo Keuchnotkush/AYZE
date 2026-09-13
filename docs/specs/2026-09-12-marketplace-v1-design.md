@@ -19,11 +19,12 @@ expirables), wallet utilisateur non custodial.
 | Rôle | Voit | Peut | Wallet |
 |---|---|---|---|
 | **Broker** | ses vaults, les prêts sortis de chacun | créer un vault, déclarer un défaut, claim l'assurance | custodial |
-| **Lender** | tous les vaults (marketplace) | déposer / retirer sur un vault | custodial |
-| **Borrower** | tous les vaults avec ≥ 1 000 USD disponibles | emprunter (ticket fixe), payer une échéance, rembourser | custodial + credential KYC |
-| **Protection seller** | les prêts sans garant | garantir un prêt | custodial |
-| AYZE (plateforme) | — | émet les credentials KYC, encaisse 0,5 % par prêt | `platform.json` |
-| Issuer (plateforme) | — | émet le `USD` de test, funde les comptes démo | `platform.json` |
+| **Lender** | tous les vaults (marketplace) | déposer / retirer sur un vault | wallet-only |
+| **Borrower** | tous les vaults avec ≥ 1 000 XRP disponibles | se faire vérifier par vault, emprunter (ticket fixe), payer une échéance, rembourser | custodial + credentials `AYZE_KYC` et `VAULT_<id>` |
+| **Protection seller** | les prêts sans garant | garantir un prêt | wallet-only |
+| AYZE (plateforme) | — | émet le credential `AYZE_KYC`, encaisse 0,5 % par prêt, signe les `EscrowCancel` | `platform.json` |
+
+L'actif est le **XRP natif** : pas d'issuer, pas de trust line, pas d'IOU. Les comptes démo sont fundés en XRP depuis le genesis du devnet.
 
 RBAC **fixe** : un rôle par compte, une action hors rôle est refusée **avant** toute transaction
 avec le code `AYZE_FORBIDDEN_ROLE`. Pas de permissions fines.
@@ -35,8 +36,8 @@ avec le code `AYZE_FORBIDDEN_ROLE`. Pas de permissions fines.
 | `AYZE_FORBIDDEN_ROLE` | action hors rôle |
 | `AYZE_KYC_REQUIRED` | borrow sans credential valide sur le ledger |
 | `AYZE_INSUFFICIENT_LIQUIDITY` | vault `AssetsAvailable` < 1 000 |
-| `AYZE_BROKER_COVER_INSUFFICIENT` | le broker n'a pas 700 USD pour le first-loss du prêt |
-| `AYZE_INSUFFICIENT_FUNDS` | wallet USD insuffisant pour l'action (dépôt, échéance, garantie) |
+| `AYZE_BROKER_COVER_INSUFFICIENT` | le broker n'a pas 700 XRP pour le first-loss du prêt |
+| `AYZE_INSUFFICIENT_FUNDS` | XRP dépensable (solde − réserve) insuffisant pour l'action (dépôt, échéance, garantie) |
 | `AYZE_ALREADY_GUARANTEED` | un PS tente de garantir un prêt déjà garanti |
 | `AYZE_LOAN_NOT_DEFAULTED` | claim d'escrow sur un prêt non défaillant |
 | `AYZE_INVALID_TERMS` | échéances/intervalle hors bornes ledger (voir §4.3) |
@@ -48,11 +49,12 @@ non rattrapées vers l'UI.
 ## 3. Modèle économique (bps entiers)
 
 Toutes les constantes sont des entiers dans `protocol/economics.ts` ; les montants sont calculés
-en **micro-USD (bigint)** puis sérialisés en chaîne XRPL, jamais en float.
+en **drops (bigint, 1 XRP = 1 000 000 drops)** puis sérialisés en chaîne de drops pour le ledger, jamais en float.
+L'UI affiche le solde brut du compte (`account_info.Balance`), comme l'explorer ; les contrôles utilisent le solde dépensable (solde − réserve).
 
 | Constante | Valeur | Unité |
 |---|---|---|
-| `TICKET` | 1 000 USD | fixe en V1 |
+| `TICKET` | 1 000 XRP (1 000 000 000 drops) | fixe en V1 |
 | `INTEREST_BPS` | 600 | 6 % du principal, flat sur la durée du prêt |
 | `INTEREST_SPLIT_BPS` | PS 5 000 · Broker 3 000 · Lender 2 000 | part de l'intérêt (somme 10 000) |
 | `AYZE_FEE_BPS` | 50 | 0,5 % du principal, en plus des intérêts |
@@ -60,8 +62,8 @@ en **micro-USD (bigint)** puis sérialisés en chaîne XRPL, jamais en float.
 | `PROTECTION_BPS` | 4 000 | escrows PS = 40 % du principal |
 | Perte résiduelle lender | 3 000 | 30 %, implicite (100 − 70) |
 
-**Exemple sur 1 000 USD, 4 échéances** : intérêt 60 USD → PS 30, broker 18, lenders 12 ;
-AYZE 5 USD à l'origination. Chaque échéance = 250 de principal + 15 d'intérêt (7,50 / 4,50 / 3,00).
+**Exemple sur 1 000 XRP, 4 échéances** : intérêt 60 XRP → PS 30, broker 18, lenders 12 ;
+AYZE 5 XRP à l'origination. Chaque échéance = 250 de principal + 15 d'intérêt (7,50 / 4,50 / 3,00).
 
 **Défaut à l'échéance k** (principal restant R) : ledger → vault `min(0,7 R, R, cover)` = 0,7 R ;
 broker claim les escrows k..N = 0,4 R ; bilan broker −0,3 R, PS −0,4 R, lenders −0,3 R.
@@ -84,64 +86,81 @@ broker claim les escrows k..N = 0,4 R ; bilan broker −0,3 R, PS −0,4 R, lend
 
 ### 4.2 Création de compte (tous rôles)
 
-1. `Wallet.generate()` ; `Payment` 100 XRP depuis le genesis du devnet (comme `accounts.ts`).
-2. `TrustSet` USD (limite 1 000 000) ; `Payment` 10 000 USD depuis l'issuer (argent de démo).
-3. **Borrower uniquement** : `CredentialCreate` par AYZE (`CredentialType` = hex(`AYZE_KYC`)), puis
-   `CredentialAccept` par le borrower. Le credential est **relu sur le ledger** (`ledger_entry`
-   type `credential`) à chaque borrow — c'est la preuve KYC, le RBAC reste applicatif.
+**Broker / borrower (custodial)** : email + mot de passe (`scrypt`), seed du wallet dans `registry.json`.
+**Lender / protection seller (wallet-only)** : pas d'email/mot de passe ; « Connect wallet » colle une seed
+existante ou en génère une (funded comme ci-dessous). La seed n'est **jamais** écrite dans `registry.json` —
+uniquement chiffrée (AES-256-GCM, clé dérivée de `SESSION_SECRET`) dans le cookie de session ; `logout` l'efface.
+
+1. `Wallet.generate()` ; `Payment` 10 000 XRP depuis le genesis du devnet (argent de démo, `DEMO_XRP`). Plus de
+   `TrustSet` ni d'issuer : l'actif est le XRP natif.
+3. Aucun credential à l'inscription. Le borrower se fait vérifier **par vault** (bouton « Be verified »,
+   `credentials.ts`) : `CredentialCreate` par AYZE (hex(`AYZE_KYC`), une fois par borrower) et par le
+   broker du vault (hex(`VAULT_<16 premiers hex du vaultID>`)), chacun suivi d'un `CredentialAccept`
+   du borrower. Relus sur le ledger (`ledger_entry` type `credential`) à chaque borrow, repli registre
+   (`Vault.verifiedBorrowers`, `User.credentials`) si le RPC échoue.
 4. Enregistrement dans le registre (§5) avec mot de passe hashé (`scrypt`).
 
 ### 4.3 Broker : créer un vault
 
-`VaultCreate` (Account = broker, Asset = USD, `WithdrawalPolicy` first-come, public, `Scale` 6).
-Registre : `{ vaultID, brokerId, name, description }`. Le vault est visible dans la marketplace
-dès que `AssetsAvailable` > 0 (borrower) ou immédiatement (lender).
+Entrée : nom, description, **first-loss capital** (XRP, obligatoire, > 0 ; contrôle XRP dépensable du broker ≥ montant).
+Séquence ledger (séquentielle, arrêt au premier échec, code XRPL remonté) : 1. `VaultCreate` (Account = broker,
+Asset = `{ currency: "XRP" }` (XLS-65), `WithdrawalPolicy` first-come, public, sans `Scale` — implicite 6 pour XRP) → 2. `LoanBrokerSet` sur ce vault
+(`ManagementFeeRate` 0, `CoverRateMinimum` 70 000, `CoverRateLiquidation` 100 000, `DebtMaximum` 0 = illimité)
+→ 3. `LoanBrokerCoverDeposit` du first-loss. Registre : `{ vaultID, loanBrokerID, firstLoss, brokerId, name, description }`.
+Le vault est visible dans la marketplace dès que `AssetsAvailable` > 0 (borrower) ou immédiatement (lender).
 
 ### 4.4 Lender : déposer / retirer
 
-`VaultDeposit` / `VaultWithdraw` (parts MPT ou montant), identiques à aujourd'hui, sur le vault
+`VaultDeposit` / `VaultWithdraw` (parts MPT ou montant en drops), identiques à aujourd'hui, sur le vault
 choisi. Le registre note le dépôt (`{ vaultID, lenderId }`) pour retrouver les lenders d'un vault
 lors de la distribution d'intérêts ; les proportions viennent du ledger (`MPTAmount`).
 
 ### 4.5 Borrower : emprunter (automatique)
 
-Entrée : vault, `paymentTotal` N (1..12), `paymentInterval` s (≥ 60), `gracePeriod` s (60..interval).
+Entrée : vault, `paymentTotal` N (1..12), `paymentInterval` s (≥ 60). `GracePeriod` = `DEFAULT_GRACE`
+= ceil(10 % × N × interval), borné à [60 s, interval] (registre `graceSeconds`).
 
-Contrôles applicatifs, dans l'ordre, chacun avec son code : rôle → credential on-chain → liquidité
-du vault → USD du broker ≥ 700 → bornes des termes.
+Contrôles applicatifs, dans l'ordre, chacun avec son code : rôle → credentials `AYZE_KYC` + `VAULT_<id>` on-chain (`AYZE_KYC_REQUIRED`) → liquidité
+du vault → `CoverAvailable` du LoanBroker du vault (ledger, repli registre `firstLoss`) ≥ 70 % de
+(`DebtTotal` + 1 000), soit 700 XRP par prêt ouvert → `AYZE_BROKER_COVER_INSUFFICIENT` sinon → bornes des termes.
 
-Séquence ledger (toutes signées côté serveur, séquentielles, arrêt au premier échec) :
+Séquence ledger (signées côté serveur, séquentielles, arrêt au premier échec). Le LoanBroker est
+celui du vault (`vault.loanBrokerID`, créé en §4.3) : plus de `LoanBrokerSet` / `CoverDeposit` par prêt.
 
 | # | Tx | Signataire | Paramètres |
 |---|---|---|---|
-| 1 | `LoanBrokerSet` | broker | `VaultID`, `ManagementFeeRate` 0, `CoverRateMinimum` 70 000, `CoverRateLiquidation` 100 000, `DebtMaximum` 1 000 |
-| 2 | `LoanBrokerCoverDeposit` | broker | 700 USD sur ce LoanBroker |
-| 3 | `LoanSet` | broker + contre-signature borrower (`signLoanSetByCounterparty`) | `PrincipalRequested` 1 000, `InterestRate` 0, fees 0, `PaymentTotal` N, `PaymentInterval`, `GracePeriod` |
-| 4 | `Payment` | borrower → AYZE | 5 USD (commission 0,5 %) |
+| 1 | `LoanSet` | broker + contre-signature borrower (`signLoanSetByCounterparty`) | `LoanBrokerID` du vault, `PrincipalRequested` 1 000 XRP (en drops), `InterestRate` 0, fees 0, `PaymentTotal` N, `PaymentInterval`, `GracePeriod` |
+| 2 | `Payment` | borrower → AYZE | 5 XRP (commission 0,5 %) |
 
 Registre : `loan { loanID, loanBrokerID, vaultID, borrowerId, N, interval, grace, schedule[], status:"active", guarantee:null }`.
-Le `schedule[]` (dates d'échéance ripple-epoch, principal et intérêt par échéance en micro-USD) est
+Le `schedule[]` (dates d'échéance ripple-epoch, principal et intérêt par échéance en drops) est
 calculé une fois à l'origination et sert aux escrows et aux paiements.
 
-Si une étape échoue après la 1, les objets créés restent (LoanBroker vide) ; V1 les laisse et
-l'UI affiche le code. Nettoyage (`LoanBrokerCoverWithdraw` + `LoanBrokerDelete`) = amélioration.
+Si la tx 2 échoue, le prêt existe et la commission est réessayée ; l'UI affiche le code.
+"Close" (§4.7/4.8) ne fait plus que `LoanDelete` : le LoanBroker du vault et sa cover restent pour les prêts suivants.
 
 ### 4.6 Protection seller : garantir un prêt
 
 Liste : prêts `active` sans `guarantee`. Action sur un prêt :
 
-- Contrôles : rôle, prêt non garanti, USD du PS ≥ 400.
-- Pour chaque échéance i restante : `EscrowCreate` PS → broker, montant `0,4 × principal_i`,
+- Contrôles : rôle, prêt non garanti, XRP dépensable du PS ≥ 400 (+ réserve d'un objet par escrow).
+- Pour chaque échéance i restante : `EscrowCreate` **XRP natif** PS → broker, montant `0,4 × principal_i` en drops
+  (l'escrow de token XLS-85 / `asfAllowTrustLineLocking` n'est plus nécessaire),
   `Condition` = SHA-256 d'un preimage aléatoire (fulfillment gardé dans le registre, côté serveur),
-  `CancelAfter` = `due_i + grace + CLAIM_WINDOW` (120 s).
+  `CancelAfter` = `due_i + DEFAULT_GRACE + CLAIM_WINDOW` (300 s).
 - Registre : `guarantee { psId, escrows[{ i, escrowID, offerSequence, condition, fulfillment, cancelAfter, status }] }`.
 
-Un escrow d'échéance payée expire et revient au PS ; en cas de défaut à k, les escrows k..N sont
-encore verrouillés et claimables par le broker.
+En cas de défaut à k, les escrows k..N sont encore verrouillés et claimables par le broker. Un escrow
+d'échéance payée (ou de prêt remboursé/clos) est libéré par la boucle de servicing dès `CancelAfter` :
+`EscrowCancel` signé par le compte plateforme (`Owner` = PS, `OfferSequence`) → `status:"RELEASED"`, fonds au PS.
 
 ### 4.7 Borrower : payer une échéance / rembourser
 
-"Pay instalment" (échéance i, montant = `principal_i` + intérêt `interest_i`) :
+Servicing automatique (`servicing.ts`, toutes les 15 s + `POST /api/servicing/run`) : à `due_i`,
+l'échéance est débitée du wallet custodial du borrower (même séquence que ci-dessous) ; l'échec
+(`lastAttemptError`, ex. `AYZE_INSUFFICIENT_FUNDS`) est affiché « Late » et réessayé à chaque passe.
+
+"Pay instalment" (échéance i, montant = `principal_i` + intérêt `interest_i`, aussi manuel) :
 
 | # | Tx | Flux |
 |---|---|---|
@@ -157,7 +176,9 @@ broker, V1 inclus car sinon le cover reste bloqué).
 
 ### 4.8 Broker : défaut et assurance
 
-- "Declare default" : `LoanManage` `tfLoanDefault` signé par le broker. Avant `due + grace` le
+- Auto-défaut : si une échéance reste impayée après `due + DEFAULT_GRACE` (10 % de la durée), la boucle
+  soumet `LoanManage` `tfLoanDefault` (broker) puis le claim ; registre `defaultedBy:"auto"`.
+- "Declare default" (manuel) : même `LoanManage` signé par le broker. Avant `due + grace` le
   ledger répond `tecTOO_SOON` → affiché tel quel (guardrail). Après : `status:"defaulted"`, le
   cover part au vault.
 - "Claim insurance" : pour chaque escrow encore `LOCKED` dont l'échéance ≥ k : `EscrowFinish`
@@ -181,7 +202,7 @@ type Loan = { id; loanID; loanBrokerID; vaultID; borrowerId; principal; paymentT
 type Escrow = { index; escrowID; offerSequence; condition; fulfillment; cancelAfter; status: "LOCKED"|"CLAIMED"|"EXPIRED" }
 ```
 
-`platform.json` (issuer + AYZE, créé par `npm run bootstrap`) vit dans `ayze_src/` à côté des
+`platform.json` (AYZE seul, créé au premier usage) vit dans `ayze_src/` à côté des
 scripts existants, qui restent inchangés (livrable hackathon).
 
 Le ledger reste la source de vérité pour tous les **montants** (vault, cover, loan, escrows,
@@ -213,7 +234,7 @@ Composants existants réutilisés : `Stat`, `Card`, `Badge`, `TxForm`, `TxButton
 frontend/src/server/
   protocol/
     economics.ts    constantes bps, split d'une échéance, schedule (pur, testé)
-    amounts.ts      micro-USD bigint ↔ chaîne XRPL (pur, testé)
+    amounts.ts      drops bigint ↔ chaîne XRPL / affichage XRP (pur, testé)
     registry.ts     accès au registre JSON
     accounts.ts     création de compte, credential
     vaults.ts       VaultCreate, deposit, withdraw, lecture vault

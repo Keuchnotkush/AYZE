@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="AYZE">
+  <rect width="64" height="64" rx="14" fill="#0a1a3f" />
+  <text x="27" y="45" font-family="'Sora', ui-sans-serif, system-ui, sans-serif" font-weight="700" font-size="34" text-anchor="middle" fill="#ffffff">A</text>
+  <circle cx="49" cy="47" r="5" fill="#0085c7" />
+</svg>

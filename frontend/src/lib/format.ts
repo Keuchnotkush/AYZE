@@ -1,6 +1,7 @@
-const usd = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 6 });
+/** XRP with up to 6 decimals, trailing zeros trimmed — same figure as the explorer. */
+const xrp = new Intl.NumberFormat("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 6 });
 
-export const fmtUSD = (value: number) => `${usd.format(value)} USD`;
+export const fmtXRP = (value: number) => `${xrp.format(value)} XRP`;
 export const fmtPct = (fraction: number, digits = 1) => `${(fraction * 100).toFixed(digits)}%`;
 
 /** Ripple epoch (2000-01-01) seconds → Date. */

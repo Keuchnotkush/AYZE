@@ -1,64 +1,111 @@
 # AYZE
 
-Short-term financing assured on the XRP Ledger.
-XLS-65 (Single Asset Vault) + XLS-66 (Lending Protocol) + XLS-85 (TokenEscrow).
+Marketplace of lending vaults on the XRP Ledger. A broker opens a vault and posts first-loss
+cover, lenders fund it, borrowers draw fixed tickets against it, and protection sellers
+guarantee individual loans with conditional escrows. Everything settles in **native XRP** — no
+issuer, no trust lines, no IOU.
 
-**Track 1 — open-ended vault — flavour Loaded.**
+Runs against the XRPL lending-hackathon devnet: `wss://lending-hackathon.dev.ripplex.io:51233`,
+explorer at `https://custom.xrpl.org/lending-hackathon.dev.ripplex.io`.
 
-## The idea
+## Roles
 
-A lender financing a business never loses more than **10% of their claim**, because two actors absorb 90% before them.
+| Role | Wallet | Can |
+|---|---|---|
+| Broker | custodial (email + password) | create a vault + first-loss cover, declare default, claim escrows, close |
+| Borrower | custodial (email + password) | get verified per vault, borrow a fixed ticket, pay instalments, repay |
+| Lender | wallet-only (seed pasted or generated) | deposit / withdraw on any vault |
+| Protection seller | wallet-only (seed pasted or generated) | guarantee an unguaranteed loan |
 
+Lender and protection-seller seeds are never written to the registry; they live only in an
+AES-256-GCM-encrypted session cookie for the duration of the login. AYZE itself is a fifth,
+implicit actor: it issues the `AYZE_KYC` credential, takes a 0.5% origination fee, and signs the
+`EscrowCancel`s that release protection-seller collateral.
 
+## End-to-end flow
 
-<img src="docs/assets/flow.png" alt="drawing" width="500"/>
+1. Broker registers, creates a vault: `VaultCreate` → `LoanBrokerSet` (cover ratio 70%) →
+   `LoanBrokerCoverDeposit` of the first-loss amount.
+2. Lender connects a wallet and deposits into the vault (`VaultDeposit`).
+3. Borrower registers, then clicks "Be verified" on that vault: AYZE issues `AYZE_KYC`, the
+   vault's broker issues `VAULT_<id>`, borrower accepts both (`CredentialAccept`).
+4. Borrower borrows a fixed 1,000 XRP ticket: `LoanSet` (broker + borrower countersign) and a
+   `Payment` of the 0.5% AYZE fee.
+5. Protection seller guarantees the loan: one `EscrowCreate` per remaining instalment, each
+   locking 40% of that instalment's principal under a hashlock condition.
+6. A servicing loop (every 15s) auto-debits each instalment when due, releases the matching
+   escrow back to the protection seller (`EscrowCancel`) once paid, and auto-declares default
+   (`LoanManage tfLoanDefault`) once an instalment is late by more than 10% of the loan duration.
+7. On default, the broker claims the locked escrows (`EscrowFinish`) for the remaining
+   instalments; interest on paid instalments was already split 50/30/20 between protection
+   seller, broker, and lenders as it was collected.
+8. Once a loan is repaid or closed, the broker can withdraw the residual cover and delete the
+   loan broker.
 
-The broker deposits 90% of the debt as first-loss. On default, the ledger automatically pays that 90% to the vault. The insurer then reimburses 30% to the broker via the escrow ladder, bringing their net loss down to 60%. It's a CDS, with the broker as protection buyer.
-
-## Running it
-
-Monorepo with two npm workspaces: `ayze_src` (protocol scripts, XRPL) and `frontend` (Next.js dashboard).
+## Run locally
 
 ```bash
-npm install                 # installs both workspaces
-npm run setup               # accounts → token → vault → deposit → broker → cover → loan → insurance → escrow
-npm run dev                 # dashboard on http://localhost:3000
+npm install
+npm run dev -w frontend        # dashboard on http://localhost:3000
 ```
 
-`npm run setup` writes `accounts.json`, `vault.json`, `broker.json`, `loan.json` and `escrow.json` into `ayze_src/state/`.
-The dashboard reads those files and the validated ledger on every render; the demo wallets are custodial
-(seeds stay server-side), and logging in as a role acts with that role's wallet.
-
-**Network.** `wss://lending-hackathon.dev.ripplex.io:51233` by default. Override with `XRPL_WSS`
-(scripts) and `frontend/.env.local` (see `frontend/.env.example`).
-
-**Stablecoin.** RLUSD only exists on Testnet, not on Devnet, so the scripts issue a test `USD` IOU.
-
-| # | Requirement | Script | Dashboard |
-|---|---|---|---|
-| 01 | Open-ended vault | `npm run vault -w ayze_src` | Lender · vault stats |
-| 02 | Lender deposit | `npm run deposit -w ayze_src` | Lender · Deposit |
-| 03 | Broker loan + accepted loan | `npm run broker`, `npm run cover`, `npm run loan` (`-w ayze_src`) | Broker · Add first-loss cover |
-| 04 | Drawdown + one repayment | `npm run repay -w ayze_src -- regular` | Borrower · Pay instalment |
-| 05 | Capital + yield withdrawal | `npm run withdraw -w ayze_src` | Lender · Withdraw |
-| 06 | Transaction refused by a guardrail | `npm run guardrail -w ayze_src` | Broker · Declare default before the grace period → `tecTOO_SOON` |
-| — | Default + insurance claim | `npm run default -w ayze_src` | Broker · Declare default, then Claim on the escrow |
-
-## Structure
+Environment (`frontend/.env.local`, see `frontend/.env.example`):
 
 ```
-ayze_src/                 @ayze/protocol — XRPL scripts, one per protocol step
-  src/setup/              accounts · token · vault · deposit · checkVault
-  src/lending/            broker · cover · loan · repay · withdraw · guardrail
-  src/insurance/          insurance · addInsurer · escrow · default · claimInsurance
-  state/                  *.json written by the scripts (git-ignored)
-frontend/                 Next.js dashboard
-  src/app/(app)/          one route per role: dashboard · borrower · broker · market · protect
-  src/server/             server-only: xrpl client, registry, ledger reads, Server Actions
-  src/components/         ui/ (design system) and dashboard/ (stats, tx forms)
-  data/                   registry.json · platform.json (git-ignored)
-docs/
-  specs/                  design specs
-  assets/                 diagrams
-xrpl-devex-hook/          git submodule (RippleDevRel) — agent skills symlinked from .claude/ .codex/ .cursor/ .grok/
+XRPL_WSS=wss://lending-hackathon.dev.ripplex.io:51233
+NEXT_PUBLIC_XRPL_EXPLORER=https://custom.xrpl.org/lending-hackathon.dev.ripplex.io:51233
+XRPL_GENESIS_SEED=snoPBrXtMeMyMHUVTgbuqAfg1SUTb   # funds every new demo wallet with XRP
+AYZE_DATA_DIR=data                                 # registry.json / platform.json
+AYZE_SESSION_SECRET=change-me                      # signs/encrypts the session cookie
 ```
+
+The servicing loop runs on a timer inside the app and is also reachable at
+`POST /api/servicing/run` for manual ticks.
+
+Full walkthrough against a running dashboard (real devnet transactions, via Playwright):
+
+```bash
+node frontend/scripts/demo.mjs [--base http://localhost:3000] [--from <step>]
+```
+
+Steps: `register, vault, deposit, borrow, guarantee, pay, rbac, default, close, balances`.
+
+## Ledger mapping
+
+| Action | Transactions |
+|---|---|
+| Fund a new demo wallet | `Payment` (from devnet genesis) |
+| Borrower verification | `CredentialCreate` ×2 (AYZE, vault's broker) + `CredentialAccept` ×2 |
+| Create vault | `VaultCreate` → `LoanBrokerSet` → `LoanBrokerCoverDeposit` |
+| Lender deposit / withdraw | `VaultDeposit` / `VaultWithdraw` |
+| Borrow | `LoanSet` (broker + borrower countersign) + `Payment` (0.5% AYZE fee) |
+| Guarantee a loan | `EscrowCreate` × remaining instalments |
+| Pay an instalment | `LoanPay` + `Payment` × (protection seller / broker / lenders interest split) |
+| Release a paid instalment's escrow | `EscrowCancel` |
+| Default | `LoanManage tfLoanDefault` |
+| Claim insurance | `EscrowFinish` × locked escrows |
+| Close a loan / vault | `LoanDelete`, `LoanBrokerCoverWithdraw` + `LoanBrokerDelete` |
+
+## Project layout
+
+```
+frontend/
+  src/app/(app)/            one route per role: dashboard · broker (+ vaults/[id]) · market · borrower · protect
+  src/app/api/               accounts/[address] (balance/tx lookups) · servicing/run
+  src/server/                 xrpl client, registry, accounts, vaults, loans, guarantees,
+                               credentials, servicing, economics, ledger reads, Server Actions
+  src/components/dashboard/  stats, tx forms, account-activity, run-servicing, forbidden
+  data/                       registry.json · platform.json (git-ignored)
+docs/specs/                  design specs
+```
+
+## Known limits
+
+- Broker and borrower keys are custodial (server-held seeds); lender and protection-seller keys
+  live only in an encrypted session cookie — neither is a real non-custodial wallet flow.
+- The application registry is a single JSON file (`registry.json`) with no concurrency control
+  beyond atomic rename; it is matching/secrets only, amounts are always read from the ledger.
+- `GracePeriod` is clamped to the ledger's `[60s, PaymentInterval]` bounds, which can shorten the
+  intended 10%-of-duration grace on very short test loans.
+- No browser wallet (Xumm/GemWallet) integration — the custom devnet isn't supported by those
+  extensions, so wallet-only roles connect by pasting or generating a seed.

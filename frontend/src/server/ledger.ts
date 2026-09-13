@@ -1,5 +1,5 @@
 import "server-only";
-import { fromXRPL, type Micro } from "./amounts";
+import { dropsToXrp, fromXRPL, toNumber, type Drops } from "./amounts";
 import { getClient } from "./xrpl";
 
 /* Read-only views over the validated ledger. */
@@ -27,12 +27,12 @@ export type VaultState = {
   vaultID: string;
   owner: string;
   account: string;
-  assetsTotal: Micro;
-  assetsAvailable: Micro;
+  assetsTotal: Drops;
+  assetsAvailable: Drops;
   sharesOutstanding: bigint; // raw share units
   scale: number;
   shareMPTID: string;
-  /** micro-USD per whole share (1e6 raw units) */
+  /** XRP per whole share (10^scale raw units) */
   pricePerShare: number;
 };
 
@@ -61,7 +61,7 @@ export async function getVaultState(vaultID: string): Promise<VaultState | null>
   }
 }
 
-export type BrokerState = { debtTotal: Micro; coverAvailable: Micro; owner: string; account: string };
+export type BrokerState = { debtTotal: Drops; coverAvailable: Drops; owner: string; account: string };
 
 export async function getBrokerState(loanBrokerID: string): Promise<BrokerState | null> {
   const node = await ledgerEntry(loanBrokerID);
@@ -78,9 +78,9 @@ export type LedgerLoanStatus = "current" | "late" | "defaultable" | "defaulted" 
 
 export type LoanState = {
   status: LedgerLoanStatus;
-  principalOutstanding: Micro;
-  totalValueOutstanding: Micro;
-  periodicPayment: Micro;
+  principalOutstanding: Drops;
+  totalValueOutstanding: Drops;
+  periodicPayment: Drops;
   paymentRemaining: number;
   nextPaymentDueDate: number | null;
   gracePeriod: number;
@@ -118,11 +118,51 @@ export async function getLoanState(loanID: string): Promise<LoanState | null> {
   };
 }
 
-export async function getUSDBalance(address: string, issuer: string): Promise<Micro> {
+/** Raw XRP balance in drops, as the explorer shows it. 0n when the account does not exist yet. */
+export async function getXRPBalance(address: string): Promise<Drops> {
   const client = await getClient();
-  const response = await client.request({ command: "account_lines", account: address, peer: issuer });
-  const line = response.result.lines.find((l) => l.currency === "USD");
-  return fromXRPL(line?.balance ?? "0");
+  try {
+    const info = await client.request({ command: "account_info", account: address, ledger_index: "validated" });
+    return BigInt(info.result.account_data.Balance);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("actNotFound")) return 0n;
+    throw error;
+  }
+}
+
+type Reserve = { base: Drops; inc: Drops };
+let reserveCache: Reserve | null = null;
+
+/** Base and per-object owner reserve of the network, in drops (cached per process). */
+export async function getReserve(): Promise<Reserve> {
+  if (reserveCache) return reserveCache;
+  const client = await getClient();
+  const response = await client.request({ command: "server_state" });
+  const ledger = response.result.state.validated_ledger;
+  reserveCache = { base: BigInt(ledger?.reserve_base ?? 10_000_000), inc: BigInt(ledger?.reserve_inc ?? 2_000_000) };
+  return reserveCache;
+}
+
+/**
+ * Balance the account can actually spend: Balance − (base + inc × OwnerCount) reserve, minus the
+ * reserve of `newObjects` ledger objects the action is about to create (escrows, vault, MPToken…).
+ * Used to gate actions; the UI displays the raw balance.
+ */
+export async function getSpendableBalance(address: string, newObjects = 0): Promise<Drops> {
+  const client = await getClient();
+  try {
+    const [info, reserve] = await Promise.all([
+      client.request({ command: "account_info", account: address, ledger_index: "validated" }),
+      getReserve(),
+    ]);
+    const data = info.result.account_data;
+    const owned = BigInt(data.OwnerCount ?? 0) + BigInt(newObjects);
+    const spendable = BigInt(data.Balance) - reserve.base - reserve.inc * owned;
+    return spendable > 0n ? spendable : 0n;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("actNotFound")) return 0n;
+    throw error;
+  }
 }
 
 export async function getShareBalance(address: string, mptIssuanceID: string): Promise<bigint> {
@@ -166,4 +206,73 @@ export function createdIndex(meta: unknown, type: string): string {
   const created = nodes.find((n) => n.CreatedNode?.LedgerEntryType === type)?.CreatedNode;
   if (!created) throw new Error(`${type} object not found in transaction metadata.`);
   return created.LedgerIndex;
+}
+
+/* ------------------------------------------------------------------ */
+/* Account activity (raw XRP balance + last on-ledger operation)        */
+/* ------------------------------------------------------------------ */
+
+export type LastTx = {
+  hash: string;
+  type: string;
+  /** Human-readable amount ("10 XRP", "0.000012 XRP", "1000000 shares", "—"), signed from the account's point of view. */
+  amount: string;
+  direction: "in" | "out" | "self";
+  /** ISO date of the validated ledger close. */
+  date: string | null;
+  result: string;
+};
+
+export type AccountActivity = { address: string; xrp: number | null; lastTx: LastTx | null };
+
+const RIPPLE_EPOCH = 946_684_800;
+
+function fmtAmount(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "string") return /^\d+$/.test(value) ? `${dropsToXrp(BigInt(value))} XRP` : null;
+  if (typeof value === "object") {
+    const v = value as { value?: string; currency?: string; mpt_issuance_id?: string };
+    if (v.mpt_issuance_id) return `${v.value ?? "0"} shares`;
+    return `${v.value ?? "0"} ${v.currency ?? ""}`.trim();
+  }
+  return null;
+}
+
+export async function getAccountActivity(address: string): Promise<AccountActivity> {
+  const client = await getClient();
+  let xrp: number | null = null;
+  try {
+    const info = await client.request({ command: "account_info", account: address, ledger_index: "validated" });
+    xrp = toNumber(BigInt(info.result.account_data.Balance));
+  } catch (error) {
+    if (!(error instanceof Error && error.message.includes("actNotFound"))) throw error;
+  }
+
+  let lastTx: LastTx | null = null;
+  if (xrp !== null) {
+    const response = await client.request({ command: "account_tx", account: address, limit: 1, ledger_index_min: -1, ledger_index_max: -1 });
+    const first = response.result.transactions[0] as unknown as
+      | { hash?: string; close_time_iso?: string; tx_json?: Node; tx?: Node; meta?: Node | string }
+      | undefined;
+    const tx = first?.tx_json ?? first?.tx;
+    if (first && tx) {
+      const meta = typeof first.meta === "object" && first.meta ? first.meta : {};
+      const account = String(tx.Account ?? "");
+      const destination = typeof tx.Destination === "string" ? tx.Destination : null;
+      const direction: LastTx["direction"] = account === address ? (destination === address ? "self" : "out") : "in";
+      const raw =
+        fmtAmount(meta.delivered_amount) ?? fmtAmount(tx.Amount) ?? fmtAmount(tx.PrincipalRequested) ?? fmtAmount(tx.DeliverMax);
+      const amount = raw ? `${direction === "in" ? "+" : direction === "out" ? "−" : ""}${raw}` : "—";
+      const seconds = typeof tx.date === "number" ? tx.date : null;
+      lastTx = {
+        hash: String(first.hash ?? tx.hash ?? ""),
+        type: String(tx.TransactionType ?? "?"),
+        amount,
+        direction,
+        date: first.close_time_iso ?? (seconds !== null ? new Date((seconds + RIPPLE_EPOCH) * 1000).toISOString() : null),
+        result: String(meta.TransactionResult ?? ""),
+      };
+    }
+  }
+  return { address, xrp, lastTx };
 }

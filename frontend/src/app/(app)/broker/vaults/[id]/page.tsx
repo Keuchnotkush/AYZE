@@ -1,23 +1,28 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AccountActivity } from "@/components/dashboard/account-activity";
 import { Address } from "@/components/dashboard/address";
 import { LoanCard } from "@/components/dashboard/loan-card";
+import { RunServicing } from "@/components/dashboard/run-servicing";
+import { Forbidden } from "@/components/dashboard/forbidden";
 import { Card, Stat } from "@/components/dashboard/stat";
 import { TxForm } from "@/components/dashboard/tx-form";
-import { fmtUSD } from "@/lib/format";
+import { fmtXRP } from "@/lib/format";
 import { claimInsuranceAction, closeLoanAction, declareDefaultAction } from "@/server/actions";
-import { requireRole } from "@/server/auth/session";
+import { pageRole } from "@/server/auth/session";
 import { findVault } from "@/server/registry";
-import { listVaults, loansWhere } from "@/server/views";
+import { listVaults, loansWhere, walletView } from "@/server/views";
 
 export const dynamic = "force-dynamic";
 
 export default async function BrokerVaultPage({ params }: PageProps<"/broker/vaults/[id]">) {
-  const broker = await requireRole("broker");
+  const gate = await pageRole("broker");
+  if (gate.user === null) return <Forbidden message={gate.forbidden} />;
+  const broker = gate.user;
   const { id } = await params;
   const vault = findVault(id);
   if (!vault || vault.brokerId !== broker.id) notFound();
-  const [[view], loans] = await Promise.all([listVaults((v) => v.id === vault.id), loansWhere((l) => l.vaultID === vault.vaultID)]);
+  const [[view], loans, wallet] = await Promise.all([listVaults((v) => v.id === vault.id), loansWhere((l) => l.vaultID === vault.vaultID), walletView(broker)]);
   loans.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   return (
@@ -26,21 +31,46 @@ export default async function BrokerVaultPage({ params }: PageProps<"/broker/vau
         <div>
           <Link href="/broker" className="text-xs text-ink/60 hover:underline">← My vaults</Link>
           <h1 className="text-2xl font-semibold">{view.name}</h1>
-          <p className="text-sm text-ink/60">{view.description || "—"} · <Address value={view.vaultID} label="Vault" /></p>
+          <p className="text-sm text-ink/60">
+            {view.description || "—"} · <Address value={view.vaultID} label="Vault" />
+            {view.loanBrokerID && <> · <Address value={view.loanBrokerID} label="LoanBroker" /></>}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Stat label="Wallet" value={fmtXRP(wallet.xrp)} />
+          <AccountActivity address={wallet.address} label="Broker XRP" />
+          {view.account && <AccountActivity address={view.account} label="Vault account XRP" />}
         </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Liquidity available" value={fmtUSD(view.assetsAvailable)} hint={`${fmtUSD(view.assetsTotal)} deposited in total`} />
+        <Stat label="Liquidity available" value={fmtXRP(view.assetsAvailable)} hint={`${fmtXRP(view.assetsTotal)} deposited`} />
+        <Stat label="Cover available" value={fmtXRP(view.coverAvailable)} hint={view.loanBrokerID ? `${fmtXRP(view.coverPosted)} posted · 700 XRP per open loan` : "no LoanBroker on this vault"} />
         <Stat label="Active loans" value={view.loans.active} hint={`${view.loans.repaid} repaid · ${view.loans.defaulted} defaulted`} />
-        <Stat label="Price per share" value={view.pricePerShare.toFixed(6)} hint="drops when a default exceeds the cover" />
-        <Stat label="Ticket" value="1 000 USD" hint="cover 700 · protection 400" />
+        <Stat label="Price per share" value={view.pricePerShare.toFixed(6)} />
       </div>
 
-      <h2 className="text-lg font-semibold">Loans from this vault</h2>
+      <Card title="Verified borrowers">
+        {view.verifiedBorrowers.length === 0 ? (
+          <p className="text-sm text-ink/70">None.</p>
+        ) : (
+          <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            {view.verifiedBorrowers.map((b) => (
+              <li key={b.id}>
+                {b.company} <Address value={b.address} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold">Loans</h2>
+        <RunServicing />
+      </div>
       {loans.length === 0 && (
         <Card>
-          <p className="text-sm text-ink/70">No loan yet. Borrowers see this vault on the marketplace as soon as it holds 1 000 USD.</p>
+          <p className="text-sm text-ink/70">No loan yet.</p>
         </Card>
       )}
       {loans.map((loan) => {
@@ -76,7 +106,7 @@ export default async function BrokerVaultPage({ params }: PageProps<"/broker/vau
                   inline
                   action={closeLoanAction}
                   hidden={{ loanId: loan.id }}
-                  submitLabel="Close & recover cover"
+                  submitLabel="Close loan"
                   variant="outline"
                   disabled={!closable}
                   disabledReason={closable ? undefined : "Once repaid or defaulted."}

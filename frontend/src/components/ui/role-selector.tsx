@@ -5,15 +5,18 @@ type RoleSelectorProps = {
   value: RoleId | null;
   onChange: (value: RoleId) => void;
   className?: string;
+  /** Restrict the choices shown (defaults to all four roles). */
+  roles?: readonly RoleId[];
 };
 
-/** Picks one of the four AYZE roles. Selected role is outlined in olympic blue. */
-export function RoleSelector({ value, onChange, className }: RoleSelectorProps) {
+/** Picks one of the AYZE roles (all four by default). Selected role is outlined in olympic blue. */
+export function RoleSelector({ value, onChange, className, roles }: RoleSelectorProps) {
+  const options = roles ? ROLES.filter((role) => roles.includes(role.id)) : ROLES;
   return (
     <fieldset className={cn("flex flex-col gap-1.5", className)}>
       <legend className="mb-1.5 text-sm font-medium">I am a</legend>
       <div className="grid grid-cols-2 gap-2.5">
-        {ROLES.map((role) => {
+        {options.map((role) => {
           const selected = role.id === value;
           return (
             <label

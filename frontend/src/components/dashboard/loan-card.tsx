@@ -2,10 +2,35 @@ import type { ReactNode } from "react";
 import { Address } from "@/components/dashboard/address";
 import { LoanStatusBadge } from "@/components/dashboard/loan-status";
 import { Badge, Card } from "@/components/dashboard/stat";
-import { fmtDate, fmtDuration, fmtUSD } from "@/lib/format";
-import type { LoanView } from "@/server/views";
+import { fmtDate, fmtDuration, fmtXRP, txUrl } from "@/lib/format";
+import type { InstalmentStatus, LoanView } from "@/server/views";
 
-const TONE = { LOCKED: "accent", CLAIMED: "good", EXPIRED: "neutral" } as const;
+type Tone = "neutral" | "good" | "warn" | "bad" | "accent";
+
+type EscrowStatus = NonNullable<LoanView["guarantee"]>["escrows"][number]["status"];
+
+const ESCROW: Record<EscrowStatus, { label: string; tone: Tone }> = {
+  LOCKED: { label: "Locked", tone: "accent" },
+  CLAIMED: { label: "Claimed", tone: "good" },
+  RELEASED: { label: "Released", tone: "neutral" },
+  EXPIRED: { label: "Released", tone: "neutral" },
+};
+
+const INSTALMENT: Record<InstalmentStatus, { label: string; tone: Tone }> = {
+  paid: { label: "Paid", tone: "good" },
+  upcoming: { label: "Due", tone: "neutral" },
+  due: { label: "Due", tone: "warn" },
+  late: { label: "Late", tone: "bad" },
+  defaulted: { label: "Defaulted", tone: "bad" },
+};
+
+function Tx({ hash }: { hash: string }) {
+  return (
+    <a href={txUrl(hash)} target="_blank" rel="noreferrer" className="font-mono underline underline-offset-4">
+      {hash.slice(0, 6)}…
+    </a>
+  );
+}
 
 type LoanCardProps = {
   loan: LoanView;
@@ -23,11 +48,12 @@ export function LoanCard({ loan, show = ["borrower", "vault", "seller"], actions
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <span className="text-base font-semibold">{fmtUSD(loan.principal)}</span>
+            <span className="text-base font-semibold">{fmtXRP(loan.principal)}</span>
             <LoanStatusBadge loan={loan} />
           </div>
           <span className="text-xs text-ink/60">
-            {loan.paymentTotal} × {fmtUSD(loan.principal / loan.paymentTotal)} every {loan.paymentInterval}s · grace {loan.gracePeriod}s · 6 % interest ({fmtUSD(loan.interestTotal)})
+            {loan.paymentTotal} × {fmtXRP(loan.principal / loan.paymentTotal)} every {loan.paymentInterval}s · grace {loan.gracePeriod}s · 6 % interest ({fmtXRP(loan.interestTotal)}) · auto-debit
+            {loan.defaultedBy && <> · defaulted by {loan.defaultedBy === "auto" ? "servicing" : "broker"}</>}
           </span>
           <span className="flex flex-wrap gap-x-3 text-xs text-ink/60">
             {show.includes("vault") && <span>Vault {loan.vault.name}</span>}
@@ -46,22 +72,36 @@ export function LoanCard({ loan, show = ["borrower", "vault", "seller"], actions
             </div>
           )}
           <div className="text-xs text-ink/60">
-            cover {fmtUSD(loan.cover)} → on ledger {fmtUSD(loan.coverAvailable)}
+            cover {fmtXRP(loan.cover)} · vault cover {fmtXRP(loan.coverAvailable)}
           </div>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-ink/60">Instalments:</span>
+        {loan.schedule.map((i) => (
+          <span key={i.index} className="inline-flex items-center gap-1" title={i.error ?? undefined}>
+            <Badge tone={INSTALMENT[i.status].tone}>
+              #{i.index} {fmtXRP(i.principal + i.interest)} · {INSTALMENT[i.status].label} {i.status === "upcoming" ? fmtDate(i.dueDate) : ""}
+              {i.status === "late" && i.error && <span className="ml-1 font-normal">(auto-debit failed: {i.error})</span>}
+            </Badge>
+            {i.txHash && <Tx hash={i.txHash} />}
+          </span>
+        ))}
       </div>
 
       {loan.guarantee && (
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="text-ink/60">Escrows (40 % of each instalment):</span>
           {loan.guarantee.escrows.map((e) => (
-            <span key={e.escrowID} className="inline-flex items-center gap-1">
-              <Badge tone={TONE[e.status as keyof typeof TONE] ?? "neutral"}>
-                #{e.index} {fmtUSD(e.amount)} · {e.status.toLowerCase()}
+            <span key={e.escrowID} className="inline-flex items-center gap-1" title={`CancelAfter ${fmtDate(e.cancelAfter)}`}>
+              <Badge tone={ESCROW[e.status].tone}>
+                #{e.index} {fmtXRP(e.amount)} · {ESCROW[e.status].label}
               </Badge>
+              {e.txHash && <Tx hash={e.txHash} />}
             </span>
           ))}
-          <span className="text-ink/60">locked {fmtUSD(loan.guarantee.locked)} · claimed {fmtUSD(loan.guarantee.claimed)}</span>
+          <span className="text-ink/60">locked {fmtXRP(loan.guarantee.locked)} · claimed {fmtXRP(loan.guarantee.claimed)} · released {fmtXRP(loan.guarantee.released)}</span>
         </div>
       )}
 

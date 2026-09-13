@@ -61,6 +61,7 @@ if (active.has("vault")) {
   const form = page.locator("form", { has: page.locator("input[name=name]") });
   await form.locator("input[name=name]").fill(vaultName);
   await form.locator("input[name=description]").fill("Demo vault");
+  await form.locator("input[name=firstLoss]").fill("2100");
   log("create vault:", await submitAndRead(form));
 }
 
@@ -80,7 +81,6 @@ if (active.has("borrow")) {
   const form = card.locator("form");
   await form.locator("input[name=paymentTotal]").fill("3");
   await form.locator("input[name=paymentInterval]").fill("120");
-  await form.locator("input[name=gracePeriod]").fill("60");
   log("borrow:", await submitAndRead(form));
 }
 
@@ -88,7 +88,14 @@ if (active.has("guarantee")) {
   await login("protection-seller");
   await page.goto(base + "/protect");
   const form = page.locator("form", { hasText: "Guarantee" }).first();
-  log("guarantee:", await submitAndRead(form));
+  // The action revalidates /protect: the loan moves to "My guarantees" and the form unmounts,
+  // so accept either the form status or the updated "Locked" stat as the outcome.
+  await form.locator("button[type=submit]").click();
+  const status = form.locator("[role=status]");
+  const locked = page.locator("main", { hasText: /[1-9]\d* loans protected/ });
+  await Promise.race([status.waitFor({ timeout: 300000 }), locked.waitFor({ timeout: 300000 })]);
+  const text = (await status.count()) ? await status.innerText() : (await page.locator("main").innerText()).match(/LOCKED\s+[\d,.]+ XRP\s+\d+ loans protected/)?.[0];
+  log("guarantee:", (text ?? "").replace(/\s+/g, " ").trim());
 }
 
 if (active.has("pay")) {
@@ -125,7 +132,7 @@ if (active.has("close")) {
   await page.goto(base + "/broker");
   await page.locator("a[href^='/broker/vaults/']").first().click();
   await page.waitForURL("**/broker/vaults/**");
-  const form = page.locator("form", { hasText: "Close & recover" }).first();
+  const form = page.locator("form", { hasText: "Close loan" }).first();
   log("close:", await submitAndRead(form));
 }
 
@@ -133,7 +140,7 @@ if (active.has("balances")) {
   for (const role of Object.keys(HOME)) {
     await login(role);
     await page.goto(base + HOME[role]);
-    const m = (await page.locator("main").innerText()).match(/WALLET\s+([\d,.]+ USD)/);
+    const m = (await page.locator("main").innerText()).match(/WALLET\s+([\d,.]+ XRP)/);
     log(role.padEnd(18), "wallet:", m?.[1]);
   }
 }

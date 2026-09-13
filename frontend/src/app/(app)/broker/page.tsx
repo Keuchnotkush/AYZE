@@ -1,29 +1,38 @@
 import Link from "next/link";
+import { AccountActivity } from "@/components/dashboard/account-activity";
+import { RunServicing } from "@/components/dashboard/run-servicing";
+import { Forbidden } from "@/components/dashboard/forbidden";
 import { Card, Stat } from "@/components/dashboard/stat";
 import { TxForm } from "@/components/dashboard/tx-form";
-import { fmtUSD } from "@/lib/format";
+import { fmtXRP } from "@/lib/format";
 import { createVaultAction } from "@/server/actions";
-import { requireRole } from "@/server/auth/session";
+import { pageRole } from "@/server/auth/session";
 import { listVaults, walletView } from "@/server/views";
 
 export const dynamic = "force-dynamic";
 
 export default async function BrokerPage() {
-  const broker = await requireRole("broker");
+  const gate = await pageRole("broker");
+  if (gate.user === null) return <Forbidden message={gate.forbidden} />;
+  const broker = gate.user;
   const [vaults, wallet] = await Promise.all([listVaults((v) => v.brokerId === broker.id), walletView(broker)]);
 
   return (
     <>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <h1 className="text-2xl font-semibold">My vaults</h1>
-        <span className="text-sm text-ink/60">Wallet {fmtUSD(wallet.usd)} — 700 USD of first-loss cover is drawn from it for every loan.</span>
+        <div className="flex flex-wrap items-end gap-3">
+          <Stat label="Wallet" value={fmtXRP(wallet.xrp)} />
+          <AccountActivity address={wallet.address} />
+          <RunServicing />
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
         <div className="flex flex-col gap-3">
           {vaults.length === 0 && (
             <Card>
-              <p className="text-sm text-ink/70">No vault yet. Create one to start receiving deposits and loan requests.</p>
+              <p className="text-sm text-ink/70">No vault yet.</p>
             </Card>
           )}
           {vaults.map((vault) => (
@@ -34,8 +43,9 @@ export default async function BrokerPage() {
                     <h2 className="text-base font-semibold group-hover:text-olympic-deep">{vault.name}</h2>
                     <p className="text-sm text-ink/60">{vault.description || "—"}</p>
                   </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <Stat label="Liquidity" value={fmtUSD(vault.assetsAvailable)} hint={`${fmtUSD(vault.assetsTotal)} total`} className="border-0 px-0 py-0" />
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <Stat label="Liquidity" value={fmtXRP(vault.assetsAvailable)} hint={`${fmtXRP(vault.assetsTotal)} total`} className="border-0 px-0 py-0" />
+                    <Stat label="Cover available" value={fmtXRP(vault.coverAvailable)} hint={vault.loanBrokerID ? `${fmtXRP(vault.coverPosted)} posted` : "no LoanBroker"} className="border-0 px-0 py-0" />
                     <Stat label="Active loans" value={vault.loans.active} hint={`${vault.loans.repaid} repaid`} className="border-0 px-0 py-0" />
                     <Stat label="Defaulted" value={vault.loans.defaulted} className="border-0 px-0 py-0" />
                   </div>
@@ -46,16 +56,15 @@ export default async function BrokerPage() {
         </div>
 
         <Card title="Create a vault">
-          <p className="text-sm text-ink/70">
-            An open-ended XLS-65 vault you own. Lenders deposit USD, borrowers draw 1 000 USD tickets, you post 70 % first-loss on each loan.
-          </p>
           <TxForm
             action={createVaultAction}
             fields={[
               { name: "name", label: "Name", placeholder: "Working capital · Q4", required: true },
               { name: "description", label: "Description", placeholder: "Short-term financing for…" },
+              { name: "firstLoss", label: "First-loss capital (XRP)", placeholder: "2100", required: true, hint: "700 XRP per open loan. Locked in the vault's LoanBroker." },
             ]}
             submitLabel="Create vault"
+            pendingLabel="Creating vault, LoanBroker and cover…"
           />
         </Card>
       </div>

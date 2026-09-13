@@ -2,16 +2,14 @@ import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import type { EscrowCreate, EscrowFinish } from "xrpl";
 import { walletOf } from "./accounts";
-import { toXRPL, type Micro } from "./amounts";
+import { bps, dropsToXrp, toXRPL, type Drops } from "./amounts";
 import { CLAIM_WINDOW, PROTECTION_BPS } from "./economics";
-import { bps } from "./amounts";
 import { AyzeError } from "./errors";
-import { createdIndex, getLiveEscrows, getUSDBalance, ledgerTime } from "./ledger";
-import { ensurePlatform, usdAsset } from "./platform";
+import { createdIndex, getLiveEscrows, getSpendableBalance, ledgerTime } from "./ledger";
 import { findUser, updateRegistry, type EscrowRecord, type Loan, type User } from "./registry";
 import { submit } from "./xrpl";
 
-/* XLS-85 conditional escrows: one per remaining instalment, protection seller → broker.
+/* Native-XRP conditional escrows: one per remaining instalment, protection seller → broker.
    The fulfillment (preimage) stays in the registry; the broker can only finish after a default. */
 
 /** PREIMAGE-SHA-256 crypto-condition (RFC draft-thomas-crypto-conditions) for a 32-byte preimage. */
@@ -24,10 +22,9 @@ function cryptoCondition() {
   };
 }
 
-export async function guaranteeLoan(seller: User, loan: Loan): Promise<{ hashes: string[]; locked: Micro }> {
+export async function guaranteeLoan(seller: User, loan: Loan): Promise<{ hashes: string[]; locked: Drops }> {
   if (loan.guarantee) throw new AyzeError("AYZE_ALREADY_GUARANTEED", "This loan already has a protection seller.");
   if (loan.status !== "active") throw new AyzeError("AYZE_LOAN_CLOSED", "This loan is no longer active.");
-  const platform = await ensurePlatform();
   const broker = findUser(loan.brokerId);
   if (!broker) throw new AyzeError("AYZE_NOT_FOUND", "Broker not found.");
   const wallet = walletOf(seller);
@@ -35,19 +32,19 @@ export async function guaranteeLoan(seller: User, loan: Loan): Promise<{ hashes:
   const remaining = loan.schedule.filter((i) => !i.paidTxHash);
   const amounts = remaining.map((i) => bps(BigInt(i.principal), PROTECTION_BPS));
   const locked = amounts.reduce((a, b) => a + b, 0n);
-  const balance = await getUSDBalance(wallet.address, platform.issuer.address);
-  if (balance < locked) throw new AyzeError("AYZE_INSUFFICIENT_FUNDS", `Guaranteeing needs ${toXRPL(locked)} USD; wallet holds ${toXRPL(balance)}.`);
+  const balance = await getSpendableBalance(wallet.address, remaining.length); // one escrow object per instalment
+  if (balance < locked) throw new AyzeError("AYZE_INSUFFICIENT_FUNDS", `Guaranteeing needs ${dropsToXrp(locked)} XRP; wallet can spend ${dropsToXrp(balance)} (after reserve).`);
 
   const escrows: EscrowRecord[] = [];
   const hashes: string[] = [];
   for (const [k, instalment] of remaining.entries()) {
     const { condition, fulfillment } = cryptoCondition();
-    const cancelAfter = instalment.dueDate + loan.gracePeriod + CLAIM_WINDOW;
+    const cancelAfter = instalment.dueDate + (loan.graceSeconds ?? loan.gracePeriod) + CLAIM_WINDOW;
     const tx: EscrowCreate = {
       TransactionType: "EscrowCreate",
       Account: wallet.address,
       Destination: broker.wallet.address,
-      Amount: { ...usdAsset(platform), value: toXRPL(amounts[k]) },
+      Amount: toXRPL(amounts[k]),
       Condition: condition,
       CancelAfter: cancelAfter,
     };
@@ -75,7 +72,7 @@ export async function guaranteeLoan(seller: User, loan: Loan): Promise<{ hashes:
 }
 
 /** Broker finishes every escrow covering the missed instalment and the following ones. */
-export async function claimInsurance(broker: User, loan: Loan): Promise<{ hashes: string[]; claimed: Micro }> {
+export async function claimInsurance(broker: User, loan: Loan): Promise<{ hashes: string[]; claimed: Drops }> {
   if (loan.status !== "defaulted") throw new AyzeError("AYZE_LOAN_NOT_DEFAULTED", "Insurance is claimable once the loan is defaulted.");
   if (!loan.guarantee) throw new AyzeError("AYZE_NOT_FOUND", "This loan has no protection seller.");
   const seller = findUser(loan.guarantee.protectionSellerId);
