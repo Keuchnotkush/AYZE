@@ -190,8 +190,10 @@ export async function getLiveEscrows(owner: string): Promise<Set<string>> {
   return new Set((response.result.account_objects as unknown as Node[]).map((o) => String(o.index)));
 }
 
-/** True when `subject` holds an accepted credential of `type` issued by `issuer`. */
-export async function hasCredential(subject: string, issuer: string, credentialType: string): Promise<boolean> {
+export type CredentialStatus = "none" | "issued" | "accepted";
+
+/** State of the credential of `type` issued by `issuer` to `subject`: absent, created but not yet accepted, or accepted. */
+export async function getCredentialStatus(subject: string, issuer: string, credentialType: string): Promise<CredentialStatus> {
   const client = await getClient();
   try {
     // rippled expects snake_case here; the xrpl.js type says `credentialType`.
@@ -203,11 +205,16 @@ export async function hasCredential(subject: string, issuer: string, credentialT
     const response = await client.request(request);
     const node = (response.result as unknown as { node: Node }).node;
     const LSF_ACCEPTED = 0x0001_0000;
-    return (Number(node.Flags ?? 0) & LSF_ACCEPTED) !== 0;
+    return (Number(node.Flags ?? 0) & LSF_ACCEPTED) !== 0 ? "accepted" : "issued";
   } catch (error) {
-    if (isRippledError(error, "entryNotFound")) return false;
+    if (isRippledError(error, "entryNotFound")) return "none";
     throw error;
   }
+}
+
+/** True when `subject` holds an accepted credential of `type` issued by `issuer`. */
+export async function hasCredential(subject: string, issuer: string, credentialType: string): Promise<boolean> {
+  return (await getCredentialStatus(subject, issuer, credentialType)) === "accepted";
 }
 
 export type ValidatedTx = { tx: Node; meta: Node; hash: string };

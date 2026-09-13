@@ -2,6 +2,42 @@
 
 All notable changes to AYZE. Dates are the day the change landed in the working tree.
 
+## [Unreleased] — 2026-09-13
+
+### Added
+
+- **Wallet extensions** — lender and protection seller can connect Crossmark or GemWallet instead of
+  pasting a seed (`lib/wallet-extension.ts`, `server/extension.ts`, `ExtensionTxForm`). The server
+  prepares `VaultDeposit` / `VaultWithdraw` / the `EscrowCreate` ladder, the extension signs and
+  submits, the server verifies every hash on the devnet (`getValidatedTx`) before recording. Connect is
+  refused when the extension reports another network. Broker and borrower stay custodial.
+- **Protection-seller accreditation** — a broker issues `PS_VAULT_<id>` (XLS-70 `CredentialCreate`) to a
+  seller's address from the vault page; the seller accepts it on `/protect` (`CredentialAccept`, seed
+  session or extension). `planGuarantee` refuses `AYZE_PS_NOT_ACCREDITED` until the credential is accepted
+  on the ledger, so a broker controls who may guarantee their vault's loans.
+- **AYZE fee retry** — the 0.5 % origination `Payment` is idempotent (`collectAyzeFee`) and retried by
+  the servicing loop when it failed after `LoanSet`; the loan card shows it as pending meanwhile.
+- **Live feel** — `AutoRefresh` (router refresh every 15 s, paused when hidden), `Countdown` ticking
+  next-due / default timers, `loading.tsx` skeletons for the role pages, spinner on pending buttons.
+- **Loan card timeline** — one column per instalment with its escrow underneath, progress bar,
+  inline auto-debit error with tooltip.
+- **Empty states** with a next step on every page; landing page tagline and role cards.
+- `docs/amendments/` — matrix and one page per amendment (XLS-65, XLS-66, XLS-70).
+
+### Changed
+
+- UI primitives now sit on **shadcn/ui** (`base-nova`, Base UI): `Button` (+ `pending`, `ButtonLink`),
+  `Field` (Label + Input), `Segmented` (Tabs), `Card`, `Badge`; theme variables mapped onto the
+  tyrian / olympic tokens in `globals.css`, light only. `lib/cn.ts` re-exports shadcn's `cn`.
+- `TxForm` fields get a keyboard matching their type on phones (`text` / `numeric` / `decimal`);
+  vault name and description no longer force the numeric keypad.
+- `Stat` gained `plain` for stats laid out inside cards.
+
+### Fixed
+
+- rippled error codes are matched on `error.data.error` (`isRippledError`); the first credential
+  lookup for an unverified borrower no longer surfaces as `AYZE_UNEXPECTED Entry not found`.
+
 ## [Unreleased] — 2026-09-12
 
 ### Changed — repository layout

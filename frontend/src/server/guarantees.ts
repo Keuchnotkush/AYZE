@@ -2,6 +2,7 @@ import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import type { EscrowCreate, EscrowFinish } from "xrpl";
 import { walletOf } from "./accounts";
+import { assertSellerAccredited } from "./credentials";
 import { bps, dropsToXrp, toXRPL, type Drops } from "./amounts";
 import { CLAIM_WINDOW, PROTECTION_BPS } from "./economics";
 import { AyzeError } from "./errors";
@@ -41,6 +42,7 @@ export async function planGuarantee(sellerAddress: string, loan: Loan): Promise<
   if (loan.status !== "active") throw new AyzeError("AYZE_LOAN_CLOSED", "This loan is no longer active.");
   const broker = findUser(loan.brokerId);
   if (!broker) throw new AyzeError("AYZE_NOT_FOUND", "Broker not found.");
+  await assertSellerAccredited(sellerAddress, loan);
 
   const remaining = loan.schedule.filter((i) => !i.paidTxHash);
   const amounts = remaining.map((i) => bps(BigInt(i.principal), PROTECTION_BPS));

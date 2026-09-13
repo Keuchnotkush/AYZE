@@ -8,10 +8,19 @@ import { connectExtensionAccount, connectWalletAccount, generateWalletAccount, r
 import { dropsToXrp, xrpToDrops } from "./amounts";
 import { verifyPassword } from "./auth/password";
 import { clearSession, currentUser, requireRole, setSession } from "./auth/session";
-import { verifyBorrowerForVault } from "./credentials";
+import { acceptAccreditation, accreditSeller, verifyBorrowerForVault } from "./credentials";
 
 import { AyzeError } from "./errors";
-import { prepareDeposit, prepareGuarantee, prepareWithdraw, recordDeposit, recordGuarantee, type PreparedTx } from "./extension";
+import {
+  prepareAcceptAccreditation,
+  prepareDeposit,
+  prepareGuarantee,
+  prepareWithdraw,
+  recordAcceptAccreditation,
+  recordDeposit,
+  recordGuarantee,
+  type PreparedTx,
+} from "./extension";
 import { claimInsurance, guaranteeLoan } from "./guarantees";
 import { borrow, closeLoan, declareDefault, payInstalment, repayInFull } from "./loans";
 import { findLoan, findUserByEmail, findVault } from "./registry";
@@ -212,6 +221,25 @@ export async function recordWithdrawAction(formData: FormData, hashes: string[])
   }, ["/market", "/broker"]);
 }
 
+export async function prepareAcceptAccreditationAction(formData: FormData): Promise<PrepareResult> {
+  return prepared(async () => {
+    const seller = await requireRole("protection-seller");
+    const vault = findVault(text(formData, "vaultId"));
+    if (!vault) throw new AyzeError("AYZE_NOT_FOUND", "Vault not found.");
+    return { txs: [await prepareAcceptAccreditation(seller, vault)] };
+  });
+}
+
+export async function recordAcceptAccreditationAction(formData: FormData, hashes: string[]): Promise<ActionResult> {
+  return run(async () => {
+    const seller = await requireRole("protection-seller");
+    const vault = findVault(text(formData, "vaultId"));
+    if (!vault) throw new AyzeError("AYZE_NOT_FOUND", "Vault not found.");
+    await recordAcceptAccreditation(seller, vault, hashes[0] ?? "");
+    return { message: `Accredited for ${vault.name}. You can now guarantee its loans.`, hashes };
+  }, ["/protect", "/broker"]);
+}
+
 export async function prepareGuaranteeAction(formData: FormData): Promise<PrepareResult> {
   return prepared(async () => {
     const seller = await requireRole("protection-seller");
@@ -271,6 +299,20 @@ export async function claimInsuranceAction(_prev: ActionResult, formData: FormDa
     if (!loan || loan.brokerId !== broker.id) throw new AyzeError("AYZE_NOT_FOUND", "Loan not found.");
     const { hashes, claimed } = await claimInsurance(broker, loan);
     return { message: `${dropsToXrp(claimed)} XRP released from the protection seller's escrows.`, hashes };
+  }, ["/broker", "/protect"]);
+}
+
+/** Broker issues the PS_VAULT_<id> credential to a protection seller's address. */
+export async function accreditSellerAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  return run(async () => {
+    const broker = await requireRole("broker");
+    const vault = findVault(text(formData, "vaultId"));
+    if (!vault || vault.brokerId !== broker.id) throw new AyzeError("AYZE_NOT_FOUND", "Vault not found.");
+    const address = text(formData, "address");
+    if (!address) throw new AyzeError("AYZE_INVALID_INPUT", "Enter the protection seller's address.");
+    const { hash, status } = await accreditSeller(broker, vault, address);
+    const message = status === "accepted" ? "This address is already accredited." : hash ? `Accreditation issued to ${address}; it becomes active once the seller accepts it.` : `Accreditation already issued to ${address}; waiting for the seller to accept.`;
+    return { message, hashes: hash ? [hash] : [] };
   }, ["/broker", "/protect"]);
 }
 
@@ -368,6 +410,17 @@ export async function repayInFullAction(_prev: ActionResult, formData: FormData)
 /* ------------------------------------------------------------------ */
 /* Protection seller                                                   */
 /* ------------------------------------------------------------------ */
+
+/** Seed-session seller accepts the broker's accreditation (extension sellers use the prepare/record pair). */
+export async function acceptAccreditationAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  return run(async () => {
+    const seller = await requireRole("protection-seller");
+    const vault = findVault(text(formData, "vaultId"));
+    if (!vault) throw new AyzeError("AYZE_NOT_FOUND", "Vault not found.");
+    const hash = await acceptAccreditation(seller, vault);
+    return { message: `Accredited for ${vault.name}. You can now guarantee its loans.`, hashes: [hash] };
+  }, ["/protect", "/broker"]);
+}
 
 export async function guaranteeAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   return run(async () => {

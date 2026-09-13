@@ -47,6 +47,8 @@ export type Vault = {
   firstLoss?: string;
   /** Borrower ids holding the vault's credential (registry mirror; the ledger is the proof). */
   verifiedBorrowers?: string[];
+  /** Protection-seller addresses the broker issued a PS_VAULT_<id> credential to (mirror; acceptance is read from the ledger). */
+  accreditedSellers?: string[];
   createdAt: string;
 };
 

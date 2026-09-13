@@ -5,7 +5,7 @@ and the broker sets no conditions. The point is to exercise the XLS-70 flow — 
 the ledger — with credentials that are granted unconditionally to any borrower who asks. What the
 ledger proves is *that* the credential was issued and accepted, not *why*.
 
-Two credentials are required to draw from a vault:
+Three credentials exist. Two are required to draw from a vault:
 
 | Credential | `CredentialType` (hex of) | Issuer | Meaning in a real deployment |
 |---|---|---|---|
@@ -48,6 +48,25 @@ on `error.data.error` (`isRippledError`).
 Both checks in parallel; the registry mirror is used only when the RPC itself fails. `assertVaultAccess`
 throws `AYZE_KYC_REQUIRED` and is the first check in `loans.ts › borrow`; `/market` also disables the
 Borrow button and shows a **Verified** badge from the same read.
+
+## Protection-seller accreditation (second use of XLS-70)
+
+A broker decides who may guarantee the loans of their vault. Credential `PS_VAULT_<id>` (hex of
+`"PS_VAULT_" + first 16 hex chars of the VaultID`), issuer = the vault's broker, subject = the seller's
+address. This one is a genuine two-party flow because sellers are wallet-only and the server never has
+their key:
+
+| Step | Signer | Where | Function |
+|---|---|---|---|
+| `CredentialCreate` | broker | vault page, "Accredit" form (seller address) | `credentials.ts › accreditSeller` |
+| `CredentialAccept` | seller | `/protect`, "Accept accreditation" (seed session server-side, or extension via `extension.ts › prepareAcceptAccreditation / recordAcceptAccreditation`) | `credentials.ts › acceptAccreditation` |
+
+`ledger.ts › getCredentialStatus` distinguishes `none` / `issued` (entry exists, `lsfAccepted` clear) /
+`accepted`; the vault page shows each accredited address with that state. The gate is
+`credentials.ts › assertSellerAccredited`, called from `guarantees.ts › planGuarantee`, so both the
+custodial and the extension guarantee paths refuse with `AYZE_PS_NOT_ACCREDITED` until the seller holds
+the accepted credential. `/protect` disables *Guarantee* and tells the seller which address to give the
+broker.
 
 ## Enforcement is application-side
 

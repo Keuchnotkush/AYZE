@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { FileText } from "lucide-react";
 import { AccountActivity } from "@/components/dashboard/account-activity";
+import { EmptyState } from "@/components/dashboard/empty-state";
 import { Address } from "@/components/dashboard/address";
 import { LoanCard } from "@/components/dashboard/loan-card";
 import { RunServicing } from "@/components/dashboard/run-servicing";
 import { Forbidden } from "@/components/dashboard/forbidden";
-import { Card, Stat } from "@/components/dashboard/stat";
+import { Badge, Card, Stat } from "@/components/dashboard/stat";
 import { TxForm } from "@/components/dashboard/tx-form";
 import { fmtXRP } from "@/lib/format";
-import { claimInsuranceAction, closeLoanAction, declareDefaultAction } from "@/server/actions";
+import { accreditSellerAction, claimInsuranceAction, closeLoanAction, declareDefaultAction } from "@/server/actions";
 import { pageRole } from "@/server/auth/session";
 import { findVault } from "@/server/registry";
 import { listVaults, loansWhere, walletView } from "@/server/views";
@@ -64,14 +66,43 @@ export default async function BrokerVaultPage({ params }: PageProps<"/broker/vau
         )}
       </Card>
 
+      <Card title="Accredited protection sellers">
+        <p className="text-sm text-ink/60">
+          Only sellers holding this vault&apos;s <code className="text-xs">PS_VAULT</code> credential can guarantee its loans. You issue it here
+          (<code className="text-xs">CredentialCreate</code>); it is active once the seller accepts it from their own wallet.
+        </p>
+        {view.accreditedSellers.length === 0 ? (
+          <p className="text-sm text-ink/70">None yet.</p>
+        ) : (
+          <ul className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+            {view.accreditedSellers.map((s) => (
+              <li key={s.address} className="flex items-center gap-2">
+                <Address value={s.address} />
+                <Badge tone={s.status === "accepted" ? "good" : s.status === "issued" ? "warn" : "neutral"}>
+                  {s.status === "accepted" ? "Active" : s.status === "issued" ? "Awaiting acceptance" : "Revoked"}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        )}
+        <TxForm
+          inline
+          action={accreditSellerAction}
+          hidden={{ vaultId: vault.id }}
+          fields={[{ name: "address", label: "Protection seller address", placeholder: "r…", required: true }]}
+          submitLabel="Accredit"
+          pendingLabel="Issuing credential…"
+          variant="outline"
+          className="flex flex-col gap-2 sm:max-w-md"
+        />
+      </Card>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Loans</h2>
         <RunServicing />
       </div>
       {loans.length === 0 && (
-        <Card>
-          <p className="text-sm text-ink/70">No loan yet.</p>
-        </Card>
+        <EmptyState icon={FileText} title="No loan drawn from this vault yet" hint="Borrowers get verified for this vault on the marketplace, then draw 1 000 XRP tickets against its liquidity." />
       )}
       {loans.map((loan) => {
         const defaultable = loan.status === "active";

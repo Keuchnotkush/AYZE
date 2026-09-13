@@ -2,9 +2,10 @@ import "server-only";
 import type { SubmittableTransaction, VaultDeposit, VaultWithdraw } from "xrpl";
 import { dropsToXrp, toXRPL, type Drops } from "./amounts";
 import { AyzeError } from "./errors";
+import { acceptAccreditationTx, recordAccreditationAccepted, sellerAccreditation, sellerCredentialType } from "./credentials";
 import { planGuarantee } from "./guarantees";
 import { createdIndex, getShareBalance, getSpendableBalance, getValidatedTx, getVaultState } from "./ledger";
-import { updateRegistry, type EscrowRecord, type Loan, type User, type Vault } from "./registry";
+import { findUser, updateRegistry, type EscrowRecord, type Loan, type User, type Vault } from "./registry";
 import { getClient } from "./xrpl";
 
 /* Extension-signed flows (Crossmark / GemWallet). The server never sees a key: it prepares the
@@ -138,4 +139,25 @@ export async function recordGuarantee(seller: User, loan: Loan, hashes: string[]
     delete target.pendingGuarantee;
   });
   return { recorded: escrows.length, planned: pending.escrows.length, locked: escrows.reduce((a, e) => a + BigInt(e.amount), 0n) };
+}
+
+/* ------------------------------------------------------------------ */
+/* Protection seller: accept the broker's accreditation                 */
+/* ------------------------------------------------------------------ */
+
+export async function prepareAcceptAccreditation(seller: User, vault: Vault): Promise<PreparedTx> {
+  requireExtension(seller);
+  const status = await sellerAccreditation(seller, vault);
+  if (status === "accepted") throw new AyzeError("AYZE_INVALID_INPUT", "Already accredited for this vault.");
+  if (status === "none") throw new AyzeError("AYZE_PS_NOT_ACCREDITED", "The vault's broker has not accredited this wallet.");
+  return prepare(acceptAccreditationTx(seller, vault));
+}
+
+export async function recordAcceptAccreditation(seller: User, vault: Vault, hash: string): Promise<void> {
+  const { tx } = await expectValidated(hash, seller.wallet.address, "CredentialAccept");
+  const broker = findUser(vault.brokerId);
+  if (!broker || tx.Issuer !== broker.wallet.address || tx.CredentialType !== sellerCredentialType(vault)) {
+    throw new AyzeError("AYZE_INVALID_INPUT", "That CredentialAccept is not this vault's accreditation.");
+  }
+  await recordAccreditationAccepted(seller, vault, hash);
 }

@@ -3,7 +3,8 @@ import { shortAddress } from "@/lib/format";
 import { toNumber, type Drops } from "./amounts";
 import { firstLossOf, interestOf, protectionOf, TICKET } from "./economics";
 import { refreshEscrowStatuses } from "./guarantees";
-import { getBrokerState, getLoanState, getShareBalance, getVaultState, getXRPBalance, ledgerTime, type LoanState, type VaultState } from "./ledger";
+import { sellerCredentialType } from "./credentials";
+import { getBrokerState, getCredentialStatus, getLoanState, getShareBalance, getVaultState, getXRPBalance, ledgerTime, type CredentialStatus, type LoanState, type VaultState } from "./ledger";
 import { readRegistry, type EscrowRecord, type InstalmentRecord, type Loan, type User, type Vault } from "./registry";
 
 /* Read models for the pages: registry (matching) + ledger (amounts), plain XRP numbers for React. */
@@ -34,6 +35,8 @@ export type VaultView = {
   canBorrow: boolean;
   /** Borrowers holding this vault's credential (registry mirror). */
   verifiedBorrowers: { id: string; company: string; address: string }[];
+  /** Protection sellers the broker accredited, with the ledger state of their PS_VAULT credential. */
+  accreditedSellers: { address: string; status: CredentialStatus }[];
   createdAt: string;
 };
 
@@ -50,6 +53,11 @@ async function toVaultView(vault: Vault, state: VaultState | null): Promise<Vaul
   const users = readRegistry().users;
   const broker = users.find((u) => u.id === vault.brokerId);
   const brokerState = vault.loanBrokerID ? await getBrokerState(vault.loanBrokerID) : null;
+  const accreditedSellers = broker
+    ? await Promise.all(
+        (vault.accreditedSellers ?? []).map(async (address) => ({ address, status: await getCredentialStatus(address, broker.wallet.address, sellerCredentialType(vault)) })),
+      )
+    : [];
   const verifiedBorrowers = (vault.verifiedBorrowers ?? []).flatMap((id) => {
     const u = users.find((x) => x.id === id);
     return u ? [{ id: u.id, company: u.company ?? "—", address: u.wallet.address }] : [];
@@ -70,6 +78,7 @@ async function toVaultView(vault: Vault, state: VaultState | null): Promise<Vaul
     loans: loanCounts(vault.vaultID),
     canBorrow: (state?.assetsAvailable ?? 0n) >= TICKET,
     verifiedBorrowers,
+    accreditedSellers,
     createdAt: vault.createdAt,
   };
 }
