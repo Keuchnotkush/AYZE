@@ -66,6 +66,19 @@ async function register(role, company) {
 /** Full r-address of the logged-in user, from the header's explorer link. */
 const myAddress = () => page.locator("header a[title^='r']").first().getAttribute("title");
 
+/** Reason shown under a disabled action button, or null when the button is enabled. */
+async function disabledReason(form) {
+  const button = form.locator("button[type=submit]");
+  // Pages stream (skeleton first): wait for the button to exist before judging it.
+  await button.first().waitFor({ timeout: 60000 }).catch(() => undefined);
+  if (!(await button.count())) return "form not found";
+  if (!(await button.isDisabled())) return null;
+  return (await button.getAttribute("title")) ?? (await form.locator("p").last().innerText().catch(() => "disabled"));
+}
+
+/** Newest loan card on the broker's vault page (loans are sorted newest first). */
+const newestLoan = () => page.locator("[data-slot=card]", { hasText: /\d+ \/ \d+ paid/ }).first();
+
 async function submitAndRead(form, timeout = 300000) {
   await form.locator("button[type=submit]").click();
   const status = form.locator("[role=status]");
@@ -133,13 +146,26 @@ if (active.has("accredit")) {
   await login("protection-seller");
   await page.goto(base + "/protect");
   const accept = page.locator("form", { hasText: "Accept accreditation" }).first();
-  log("accredit (seller accepts):", await submitAndRead(accept));
+  if (await accept.count()) {
+    // On success the accept form is replaced by an enabled Guarantee button: accept either outcome.
+    await accept.locator("button[type=submit]").click();
+    const status = accept.locator("[role=status]");
+    const guarantee = page.locator("form", { hasText: "Guarantee" }).locator("button[type=submit]:not([disabled])").first();
+    await Promise.race([status.waitFor({ timeout: 300000 }), guarantee.waitFor({ timeout: 300000 })]);
+    log("accredit (seller accepts):", (await status.count()) ? (await status.innerText()).replace(/\s+/g, " ").trim() : "CredentialAccept validated, Guarantee enabled");
+  } else {
+    log("accredit (seller accepts): already accredited");
+  }
 }
 
 if (active.has("guarantee")) {
   await login("protection-seller");
   await page.goto(base + "/protect");
   const form = page.locator("form", { hasText: "Guarantee" }).first();
+  const why = (await form.count()) ? await disabledReason(form) : "no loan seeking protection";
+  if (why) {
+    log("guarantee: skipped —", why);
+  } else {
   // The action revalidates /protect: the loan moves to "My guarantees" and the form unmounts,
   // so accept either the form status or the updated "Locked" stat as the outcome.
   await form.locator("button[type=submit]").click();
@@ -148,13 +174,15 @@ if (active.has("guarantee")) {
   await Promise.race([status.waitFor({ timeout: 300000 }), locked.waitFor({ timeout: 300000 })]);
   const text = (await status.count()) ? await status.innerText() : (await page.locator("main").innerText()).match(/LOCKED\s+[\d,.]+ XRP\s+\d+ loans protected/)?.[0];
   log("guarantee:", (text ?? "").replace(/\s+/g, " ").trim());
+  }
 }
 
 if (active.has("pay")) {
   await login("borrower");
   await page.goto(base + "/borrower");
   const form = page.locator("form", { hasText: "Pay instalment" }).first();
-  log("pay #1:", await submitAndRead(form));
+  const why = (await form.count()) ? await disabledReason(form) : "no loan";
+  log("pay #1:", why ? `skipped — ${why}` : await submitAndRead(form));
 }
 
 if (active.has("rbac")) {
@@ -168,18 +196,30 @@ if (active.has("default")) {
   await page.goto(base + "/broker");
   await page.locator("a[href^='/broker/vaults/']").first().click();
   await page.waitForURL("**/broker/vaults/**");
-  if ((await page.locator("main").innerText()).includes("Repaid")) {
+  await newestLoan().waitFor({ timeout: 60000 });
+  const text = async () => (await newestLoan().innerText()).replace(/\s+/g, " ");
+  let card = await text();
+  if (card.includes("Repaid")) {
     log("default: loan already repaid by auto-debit; run the container with AYZE_AUTODEBIT=off to demo a default");
+  } else if (card.includes("defaulted by servicing")) {
+    log("default: auto-defaulted by the servicing loop (LoanManage tfLoanDefault + escrow claim done server-side)");
   } else {
-  let form = page.locator("form", { hasText: "Declare default" }).first();
-  log("default (early):", await submitAndRead(form));
-  for (let i = 0; i < 60; i++) {
-    await page.reload();
-    if ((await page.locator("main").innerText()).includes("In default window")) break;
-    await page.waitForTimeout(10000);
-  }
-  form = page.locator("form", { hasText: "Declare default" }).first();
-  log("default (after grace):", await submitAndRead(form));
+    let form = newestLoan().locator("form", { hasText: "Declare default" });
+    log("default (early):", await submitAndRead(form)); // expected: XRPL_tecTOO_SOON before due + grace
+    // Wait for the grace period; the servicing loop (every 15 s) usually wins the race and defaults first.
+    for (let i = 0; i < 60; i++) {
+      await page.reload();
+      await newestLoan().waitFor({ timeout: 60000 });
+      card = await text();
+      if (card.includes("In default window") || card.includes("defaulted by servicing")) break;
+      await page.waitForTimeout(10000);
+    }
+    if (card.includes("defaulted by servicing")) {
+      log("default (after grace): auto-defaulted by the servicing loop");
+    } else {
+      form = newestLoan().locator("form", { hasText: "Declare default" });
+      log("default (after grace):", await submitAndRead(form));
+    }
   }
 }
 
@@ -188,8 +228,10 @@ if (active.has("close")) {
   await page.goto(base + "/broker");
   await page.locator("a[href^='/broker/vaults/']").first().click();
   await page.waitForURL("**/broker/vaults/**");
-  const form = page.locator("form", { hasText: "Close loan" }).first();
-  log("close:", await submitAndRead(form));
+  await newestLoan().waitFor({ timeout: 60000 });
+  const form = newestLoan().locator("form", { hasText: "Close loan" });
+  const why = await disabledReason(form);
+  log("close:", why ? `skipped — ${why}` : await submitAndRead(form));
 }
 
 if (active.has("balances")) {

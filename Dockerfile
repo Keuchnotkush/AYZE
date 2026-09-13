@@ -27,9 +27,10 @@ ENV AYZE_DATA_DIR=/data
 COPY --chown=node:node --from=builder /app/frontend/.next/standalone ./
 COPY --chown=node:node --from=builder /app/frontend/.next/static ./frontend/.next/static
 COPY --chown=node:node --from=builder /app/frontend/public ./frontend/public
-RUN mkdir -p /data && chown node:node /data
+RUN mkdir -p /data
 # No VOLUME instruction: Railway rejects it. Mount persistent storage at /data
 # (docker: -v ayze-data:/data; Railway: attach a Volume with mount path /data).
-USER node
+# Runs as root on purpose: Railway mounts volumes root-owned, so a non-root USER
+# gets EACCES on the mount. AYZE_DATA_DIR also falls back to RAILWAY_VOLUME_MOUNT_PATH.
 EXPOSE 3000
 CMD ["node", "frontend/server.js"]
