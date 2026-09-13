@@ -14,8 +14,8 @@ explorer at `https://custom.xrpl.org/lending-hackathon.dev.ripplex.io`.
 |---|---|---|
 | Broker | custodial (email + password) | create a vault + first-loss cover, declare default, claim escrows, close |
 | Borrower | custodial (email + password) | get verified per vault, borrow a fixed ticket, pay instalments, repay |
-| Lender | wallet-only (seed pasted or generated) | deposit / withdraw on any vault |
-| Protection seller | wallet-only (seed pasted or generated) | guarantee an unguaranteed loan |
+| Lender | wallet-only (Crossmark / GemWallet, or a seed pasted or generated) | deposit / withdraw on any vault |
+| Protection seller | wallet-only (Crossmark / GemWallet, or a seed pasted or generated) | guarantee an unguaranteed loan |
 
 Lender and protection-seller seeds are never written to the registry; they live only in an
 AES-256-GCM-encrypted session cookie for the duration of the login. AYZE itself is a fifth,
@@ -107,5 +107,8 @@ docs/specs/                  design specs
   beyond atomic rename; it is matching/secrets only, amounts are always read from the ledger.
 - `GracePeriod` is clamped to the ledger's `[60s, PaymentInterval]` bounds, which can shorten the
   intended 10%-of-duration grace on very short test loans.
-- No browser wallet (Xumm/GemWallet) integration — the custom devnet isn't supported by those
-  extensions, so wallet-only roles connect by pasting or generating a seed.
+- Lender and protection seller can sign in with **Crossmark or GemWallet** (the extension must have
+  the lending-hackathon devnet added as a custom network): the server prepares `VaultDeposit`,
+  `VaultWithdraw` and the `EscrowCreate` ladder, the extension signs and submits, the server checks
+  each hash on the ledger before recording it. Broker and borrower stay custodial because `LoanSet`
+  needs the broker's co-signature and instalments are auto-debited server-side. Xaman is not supported.

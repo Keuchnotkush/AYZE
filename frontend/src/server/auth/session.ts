@@ -3,6 +3,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { RoleId } from "@/lib/roles";
+import type { ExtensionProvider } from "@/lib/wallet-extension";
 import { SESSION_SECRET } from "../env";
 import { AyzeError } from "../errors";
 import { findUser, type User } from "../registry";
@@ -13,7 +14,7 @@ const COOKIE = "ayze_session";
     for free, so there is no separate signature to check. */
 const KEY = createHash("sha256").update(SESSION_SECRET).digest();
 
-type SessionPayload = { userId: string; seed?: string };
+type SessionPayload = { userId: string; seed?: string; provider?: ExtensionProvider };
 
 /** Wallet-only roles never write their seed to registry.json: it is encrypted into
     this cookie instead, and gone the moment the user logs out. */
@@ -41,9 +42,9 @@ function decode(value: string): SessionPayload | null {
 
 /** `seed` is required for wallet-only roles (lender / protection-seller): it is never
     persisted to the registry, only encrypted into this cookie. */
-export async function setSession(userId: string, seed?: string) {
+export async function setSession(userId: string, seed?: string, provider?: ExtensionProvider) {
   const store = await cookies();
-  store.set(COOKIE, encode({ userId, seed }), { httpOnly: true, sameSite: "lax", path: "/" });
+  store.set(COOKIE, encode({ userId, seed, provider }), { httpOnly: true, sameSite: "lax", path: "/" });
 }
 
 export async function clearSession() {
@@ -62,6 +63,9 @@ export async function currentUser(): Promise<User | null> {
   /* Wallet-only roles keep no seed in the registry: merge the one from the session
      cookie in-memory so `walletOf(user)` works exactly like for custodial roles. */
   if (payload.seed && !user.wallet.seed) return { ...user, wallet: { ...user.wallet, seed: payload.seed } };
+  /* Extension-connected wallets have no seed anywhere: transactions are prepared server-side
+     and signed in the browser (see extension.ts). `provider` is session-only, never persisted. */
+  if (payload.provider && !user.wallet.seed) return { ...user, provider: payload.provider };
   return user;
 }
 

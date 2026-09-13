@@ -210,6 +210,27 @@ export async function hasCredential(subject: string, issuer: string, credentialT
   }
 }
 
+export type ValidatedTx = { tx: Node; meta: Node; hash: string };
+
+/**
+ * A validated transaction by hash, or null when the ledger does not know it (yet). Used to check
+ * what a browser extension signed before the registry records it.
+ */
+export async function getValidatedTx(hash: string): Promise<ValidatedTx | null> {
+  const client = await getClient();
+  try {
+    const response = await client.request({ command: "tx", transaction: hash });
+    const r = response.result as unknown as { validated?: boolean; tx_json?: Node; meta?: Node | string; hash?: string } & Node;
+    if (!r.validated) return null;
+    const tx = r.tx_json ?? r;
+    const meta = typeof r.meta === "object" && r.meta ? r.meta : {};
+    return { tx, meta, hash: String(r.hash ?? hash) };
+  } catch (error) {
+    if (isRippledError(error, "txnNotFound")) return null;
+    throw error;
+  }
+}
+
 /** Ledger index of the object of `type` created by a validated transaction. */
 export function createdIndex(meta: unknown, type: string): string {
   const nodes = (meta as { AffectedNodes?: Array<{ CreatedNode?: { LedgerEntryType: string; LedgerIndex: string } }> })

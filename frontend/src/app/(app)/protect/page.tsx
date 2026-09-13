@@ -2,9 +2,10 @@ import { AccountActivity } from "@/components/dashboard/account-activity";
 import { LoanCard } from "@/components/dashboard/loan-card";
 import { Forbidden } from "@/components/dashboard/forbidden";
 import { Card, Stat } from "@/components/dashboard/stat";
+import { ExtensionTxForm } from "@/components/dashboard/extension-tx-form";
 import { TxForm } from "@/components/dashboard/tx-form";
 import { fmtXRP } from "@/lib/format";
-import { guaranteeAction } from "@/server/actions";
+import { guaranteeAction, prepareGuaranteeAction, recordGuaranteeAction } from "@/server/actions";
 import { pageRole } from "@/server/auth/session";
 import { loansWhere, walletView } from "@/server/views";
 
@@ -39,23 +40,40 @@ export default async function ProtectPage() {
           <p className="text-sm text-ink/70">No loan seeking protection.</p>
         </Card>
       )}
-      {open.map((loan) => (
-        <LoanCard
-          key={loan.id}
-          loan={loan}
-          show={["vault", "broker", "borrower"]}
-          actions={
-            <TxForm
-              inline
-              action={guaranteeAction}
-              hidden={{ loanId: loan.id }}
-              submitLabel={`Guarantee (${fmtXRP((loan.principal - (loan.paidCount * loan.principal) / loan.paymentTotal) * 0.4)} locked, ${fmtXRP(loan.interestTotal * 0.5)} premium)`}
-              disabled={loan.ledgerStatus === "defaultable" || loan.ledgerStatus === "late"}
-              disabledReason={loan.ledgerStatus === "defaultable" || loan.ledgerStatus === "late" ? "This loan is already overdue." : undefined}
-            />
-          }
-        />
-      ))}
+      {open.map((loan) => {
+        const overdue = loan.ledgerStatus === "defaultable" || loan.ledgerStatus === "late";
+        const label = `Guarantee (${fmtXRP((loan.principal - (loan.paidCount * loan.principal) / loan.paymentTotal) * 0.4)} locked, ${fmtXRP(loan.interestTotal * 0.5)} premium)`;
+        return (
+          <LoanCard
+            key={loan.id}
+            loan={loan}
+            show={["vault", "broker", "borrower"]}
+            actions={
+              seller.provider ? (
+                <ExtensionTxForm
+                  inline
+                  provider={seller.provider}
+                  prepare={prepareGuaranteeAction}
+                  record={recordGuaranteeAction}
+                  hidden={{ loanId: loan.id }}
+                  submitLabel={label}
+                  disabled={overdue}
+                  disabledReason={overdue ? "This loan is already overdue." : undefined}
+                />
+              ) : (
+                <TxForm
+                  inline
+                  action={guaranteeAction}
+                  hidden={{ loanId: loan.id }}
+                  submitLabel={label}
+                  disabled={overdue}
+                  disabledReason={overdue ? "This loan is already overdue." : undefined}
+                />
+              )
+            }
+          />
+        );
+      })}
 
       <h2 className="text-lg font-semibold">My guarantees</h2>
       {mine.length === 0 && (

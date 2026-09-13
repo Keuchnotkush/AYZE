@@ -1,12 +1,14 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Segmented } from "@/components/ui/segmented";
 import { RoleSelector } from "@/components/ui/role-selector";
 import type { RoleId } from "@/lib/roles";
-import { connectWalletAction, generateWalletAction, login, register, type ActionResult, type WalletActionResult } from "@/server/actions";
+import { connectExtension, detectProviders, onExpectedNetwork, PROVIDER_LABEL, type ExtensionProvider } from "@/lib/wallet-extension";
+import { connectExtensionAction, connectWalletAction, generateWalletAction, login, register, type ActionResult, type WalletActionResult } from "@/server/actions";
 
 type Mode = "login" | "register" | "wallet";
 
@@ -23,7 +25,7 @@ const WALLET_ROLES: readonly RoleId[] = ["lender", "protection-seller"];
  * (email + password, wallet generated and held server-side); lender and protection-seller
  * are wallet-only (paste a family seed, or have one generated for them).
  */
-export function AuthForm() {
+export function AuthForm({ xrplWss }: { xrplWss: string }) {
   const [mode, setMode] = useState<Mode>("login");
   const [role, setRole] = useState<RoleId | null>(null);
   const [state, formAction, pending] = useActionState(
@@ -40,7 +42,7 @@ export function AuthForm() {
   };
 
   if (mode === "wallet") {
-    return <WalletForm initialRole={role} onSwitch={setMode} />;
+    return <WalletForm initialRole={role} onSwitch={setMode} xrplWss={xrplWss} />;
   }
 
   return (
@@ -96,7 +98,7 @@ export function AuthForm() {
 }
 
 /** Wallet-only sign-in: paste a family seed to reconnect, or have one generated. */
-function WalletForm({ initialRole, onSwitch }: { initialRole: RoleId | null; onSwitch: (mode: Mode) => void }) {
+function WalletForm({ initialRole, onSwitch, xrplWss }: { initialRole: RoleId | null; onSwitch: (mode: Mode) => void; xrplWss: string }) {
   const [role, setRole] = useState<RoleId | null>(initialRole && WALLET_ROLES.includes(initialRole) ? initialRole : null);
   const [connectState, connectAction, connectPending] = useActionState<WalletActionResult, FormData>(connectWalletAction, null);
   const [generateState, generateAction, generatePending] = useActionState<WalletActionResult, FormData>(generateWalletAction, null);
@@ -125,6 +127,14 @@ function WalletForm({ initialRole, onSwitch }: { initialRole: RoleId | null; onS
       <Segmented label="Account action" options={MODES} value="wallet" onChange={onSwitch} />
 
       <RoleSelector value={role} onChange={setRole} roles={WALLET_ROLES} />
+
+      <ExtensionConnect role={role} xrplWss={xrplWss} />
+
+      <div className="flex items-center gap-3 text-xs text-ink/40">
+        <span className="h-px flex-1 bg-ink/15" />
+        or with a seed
+        <span className="h-px flex-1 bg-ink/15" />
+      </div>
 
       <form action={connectAction} className="flex flex-col gap-4">
         <input type="hidden" name="role" value={role ?? ""} />
@@ -168,6 +178,61 @@ function WalletForm({ initialRole, onSwitch }: { initialRole: RoleId | null; onS
           Back to log in
         </button>
       </p>
+    </div>
+  );
+}
+
+/**
+ * Browser-extension sign-in (Crossmark / GemWallet). The extension keeps the key: it hands us the
+ * address here and signs each transaction later. The extension must be on the lending-hackathon
+ * devnet (added as a custom network) — otherwise the signed transactions land on the wrong ledger.
+ */
+function ExtensionConnect({ role, xrplWss }: { role: RoleId | null; xrplWss: string }) {
+  const router = useRouter();
+  const [providers, setProviders] = useState<ExtensionProvider[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  useEffect(() => {
+    detectProviders().then(setProviders);
+  }, []);
+
+  const connect = (provider: ExtensionProvider) =>
+    start(async () => {
+      setError(null);
+      try {
+        const session = await connectExtension(provider);
+        const match = onExpectedNetwork(session, xrplWss);
+        if (match === false) {
+          setError(`${PROVIDER_LABEL[provider]} is on ${session.network}, not on the AYZE devnet. Switch it to ${xrplWss} (add it as a custom network) and retry.`);
+          return;
+        }
+        const result = await connectExtensionAction(role ?? "", session.address, provider);
+        if (result && !result.ok) {
+          setError(`${result.code} ${result.message}`);
+          return;
+        }
+        router.push("/dashboard");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    });
+
+  if (providers === null) return <p className="text-xs text-ink/60">Looking for a wallet extension…</p>;
+  if (providers.length === 0) {
+    return <p className="text-xs text-ink/60">No wallet extension detected. Install Crossmark or GemWallet and add the devnet as a custom network, or use a seed below.</p>;
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        {providers.map((p) => (
+          <Button key={p} type="button" size="lg" variant="contrast" disabled={!role || pending} onClick={() => connect(p)}>
+            {pending ? "Connecting…" : `Connect ${PROVIDER_LABEL[p]}`}
+          </Button>
+        ))}
+      </div>
+      <p className="text-xs text-ink/60">The extension must be set to the AYZE devnet ({xrplWss}); add it as a custom network if it is not listed. GemWallet reports its network and is checked here; Crossmark is checked when it reports one.</p>
+      {error && <p className="text-xs text-red-400">{error}</p>}
     </div>
   );
 }

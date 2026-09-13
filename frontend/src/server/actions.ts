@@ -3,13 +3,15 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { isRoleId } from "@/lib/roles";
-import { connectWalletAccount, generateWalletAccount, registerUser } from "./accounts";
+import type { ExtensionProvider } from "@/lib/wallet-extension";
+import { connectExtensionAccount, connectWalletAccount, generateWalletAccount, registerUser } from "./accounts";
 import { dropsToXrp, xrpToDrops } from "./amounts";
 import { verifyPassword } from "./auth/password";
 import { clearSession, currentUser, requireRole, setSession } from "./auth/session";
 import { verifyBorrowerForVault } from "./credentials";
 
 import { AyzeError } from "./errors";
+import { prepareDeposit, prepareGuarantee, prepareWithdraw, recordDeposit, recordGuarantee, type PreparedTx } from "./extension";
 import { claimInsurance, guaranteeLoan } from "./guarantees";
 import { borrow, closeLoan, declareDefault, payInstalment, repayInFull } from "./loans";
 import { findLoan, findUserByEmail, findVault } from "./registry";
@@ -140,6 +142,95 @@ export async function connectWalletAction(_prev: WalletActionResult, formData: F
   })();
   if (result?.ok) redirect("/dashboard");
   return result;
+}
+
+/** Connects a Crossmark / GemWallet address; the extension keeps the key, the session keeps the provider. */
+export async function connectExtensionAction(role: string, address: string, provider: ExtensionProvider): Promise<WalletActionResult> {
+  if (role !== "lender" && role !== "protection-seller") return { ok: false, code: "AYZE_INVALID_INPUT", message: "Choose lender or protection seller." };
+  try {
+    const user = await connectExtensionAccount(role, address);
+    await setSession(user.id, undefined, provider);
+    revalidatePath("/", "layout");
+    return { ok: true, address: user.wallet.address };
+  } catch (error) {
+    return walletError(error);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Extension-signed transactions (lender / protection-seller)          */
+/* ------------------------------------------------------------------ */
+
+/** Unsigned transactions for the browser extension, or the reason none could be prepared. */
+export type PrepareResult = { ok: true; txs: PreparedTx[]; note?: string } | { ok: false; code: string; message: string };
+
+async function prepared(work: () => Promise<{ txs: PreparedTx[]; note?: string }>): Promise<PrepareResult> {
+  try {
+    return { ok: true, ...(await work()) };
+  } catch (error) {
+    if (error instanceof AyzeError) return { ok: false, code: error.code, message: error.message };
+    return { ok: false, code: "AYZE_UNEXPECTED", message: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export async function prepareDepositAction(formData: FormData): Promise<PrepareResult> {
+  return prepared(async () => {
+    const lender = await requireRole("lender");
+    const vault = findVault(text(formData, "vaultId"));
+    if (!vault) throw new AyzeError("AYZE_NOT_FOUND", "Vault not found.");
+    const value = amount(formData, "amount");
+    if (!value) throw new AyzeError("AYZE_INVALID_INPUT", "Enter an amount.");
+    return { txs: [await prepareDeposit(lender, vault, value)] };
+  });
+}
+
+export async function recordDepositAction(formData: FormData, hashes: string[]): Promise<ActionResult> {
+  return run(async () => {
+    const lender = await requireRole("lender");
+    const vault = findVault(text(formData, "vaultId"));
+    if (!vault) throw new AyzeError("AYZE_NOT_FOUND", "Vault not found.");
+    await recordDeposit(lender, vault, hashes[0] ?? "");
+    return { message: `Deposited ${text(formData, "amount")} XRP into ${vault.name}.`, hashes };
+  }, ["/market", "/broker"]);
+}
+
+export async function prepareWithdrawAction(formData: FormData): Promise<PrepareResult> {
+  return prepared(async () => {
+    const lender = await requireRole("lender");
+    const vault = findVault(text(formData, "vaultId"));
+    if (!vault) throw new AyzeError("AYZE_NOT_FOUND", "Vault not found.");
+    return { txs: [await prepareWithdraw(lender, vault, amount(formData, "amount"))] };
+  });
+}
+
+export async function recordWithdrawAction(formData: FormData, hashes: string[]): Promise<ActionResult> {
+  return run(async () => {
+    await requireRole("lender");
+    const vault = findVault(text(formData, "vaultId"));
+    const value = text(formData, "amount");
+    return { message: value ? `Withdrew ${value} XRP from ${vault?.name ?? "the vault"}.` : `Redeemed all shares of ${vault?.name ?? "the vault"}.`, hashes };
+  }, ["/market", "/broker"]);
+}
+
+export async function prepareGuaranteeAction(formData: FormData): Promise<PrepareResult> {
+  return prepared(async () => {
+    const seller = await requireRole("protection-seller");
+    const loan = findLoan(text(formData, "loanId"));
+    if (!loan) throw new AyzeError("AYZE_NOT_FOUND", "Loan not found.");
+    const { txs, locked } = await prepareGuarantee(seller, loan);
+    return { txs, note: `${txs.length} escrows to sign, ${dropsToXrp(locked)} XRP in total.` };
+  });
+}
+
+export async function recordGuaranteeAction(formData: FormData, hashes: string[]): Promise<ActionResult> {
+  return run(async () => {
+    const seller = await requireRole("protection-seller");
+    const loan = findLoan(text(formData, "loanId"));
+    if (!loan) throw new AyzeError("AYZE_NOT_FOUND", "Loan not found.");
+    const { recorded, planned, locked } = await recordGuarantee(seller, loan, hashes);
+    const partial = recorded < planned ? ` Only ${recorded} of ${planned} escrows validated; the remaining instalments are unprotected.` : "";
+    return { message: `${dropsToXrp(locked)} XRP locked in ${recorded} escrows to the broker.${partial}`, hashes };
+  }, ["/protect", "/broker", "/borrower"]);
 }
 
 /* ------------------------------------------------------------------ */

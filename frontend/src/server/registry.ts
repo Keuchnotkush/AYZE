@@ -4,6 +4,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { DATA_DIR } from "./env";
 import type { RoleId } from "@/lib/roles";
+import type { ExtensionProvider } from "@/lib/wallet-extension";
 import type { Drops } from "./amounts";
 
 /* The registry holds the matching (who owns / deposited / guaranteed what) and the
@@ -28,6 +29,8 @@ export type User = {
   wallet: WalletRecord;
   /** Credentials issued per vault verification (AYZE_KYC + VAULT_<id>), see credentials.ts. */
   credentials?: CredentialRecord[];
+  /** Session-only (merged in by `currentUser()`): the browser extension that signs for this wallet. Never written to disk. */
+  provider?: ExtensionProvider;
   createdAt: string;
 };
 
@@ -65,6 +68,14 @@ export type EscrowRecord = {
 
 export type Guarantee = { protectionSellerId: string; createdAt: string; escrows: EscrowRecord[] };
 
+/** Escrow ladder prepared for an extension-signed guarantee: conditions handed to the browser,
+    fulfillments kept here until the EscrowCreates are confirmed on the ledger (see extension.ts). */
+export type PendingGuarantee = {
+  protectionSellerId: string;
+  createdAt: string;
+  escrows: Array<Pick<EscrowRecord, "index" | "amount" | "condition" | "fulfillment" | "cancelAfter">>;
+};
+
 export type InstalmentRecord = {
   index: number;
   dueDate: number;
@@ -97,6 +108,7 @@ export type Loan = {
   missedIndex?: number; // first unpaid instalment when defaulted
   defaultedBy?: "auto" | "broker";
   guarantee?: Guarantee;
+  pendingGuarantee?: PendingGuarantee;
   txHashes: { loanBrokerSet?: string; coverDeposit?: string; loanSet: string; ayzeFee?: string };
   /** Why the last AYZE fee attempt failed; cleared once `txHashes.ayzeFee` is set. */
   ayzeFeeError?: string;

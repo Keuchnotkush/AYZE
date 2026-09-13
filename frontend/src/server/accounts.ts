@@ -1,8 +1,9 @@
 import "server-only";
-import { Wallet } from "xrpl";
+import { isValidClassicAddress, Wallet } from "xrpl";
 import type { RoleId } from "@/lib/roles";
 import { hashPassword } from "./auth/password";
 import { AyzeError } from "./errors";
+import { getXRPBalance } from "./ledger";
 import { fundXRP } from "./platform";
 import { findUserByEmail, findUserByWallet, newId, updateRegistry, type User } from "./registry";
 
@@ -95,4 +96,16 @@ export async function connectWalletAccount(role: RoleId, seed: string): Promise<
   const existing = findUserByWallet(wallet.address, role);
   const user = existing ?? (await pushWalletUser(role, wallet.address));
   return { user, seed: wallet.seed! };
+}
+
+/**
+ * Connects a browser-extension wallet (Crossmark / GemWallet) for a wallet-only role. Only the
+ * address reaches the server; signing happens in the extension. An address the devnet has never
+ * seen is funded from genesis like every other demo wallet.
+ */
+export async function connectExtensionAccount(role: RoleId, address: string): Promise<User> {
+  if (!WALLET_ONLY_ROLES.includes(role)) throw new AyzeError("AYZE_INVALID_INPUT", "Wallet connect is only for lender / protection-seller accounts.");
+  if (!isValidClassicAddress(address)) throw new AyzeError("AYZE_INVALID_INPUT", "The extension returned an invalid address.");
+  if ((await getXRPBalance(address)) === 0n) await fundXRP(address);
+  return findUserByWallet(address, role) ?? (await pushWalletUser(role, address));
 }

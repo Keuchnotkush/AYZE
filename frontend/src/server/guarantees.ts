@@ -22,45 +22,75 @@ function cryptoCondition() {
   };
 }
 
-export async function guaranteeLoan(seller: User, loan: Loan): Promise<{ hashes: string[]; locked: Drops }> {
+export type PlannedEscrow = {
+  index: number;
+  amount: Drops;
+  condition: string;
+  fulfillment: string;
+  cancelAfter: number;
+  tx: EscrowCreate;
+};
+
+/**
+ * The escrow ladder a protection seller at `sellerAddress` must post for `loan`: one conditional
+ * EscrowCreate per unpaid instalment, 40 % of its principal, cancellable after due + grace + claim
+ * window. Checks the loan is open and the seller can afford the ladder (one owner reserve per escrow).
+ */
+export async function planGuarantee(sellerAddress: string, loan: Loan): Promise<{ escrows: PlannedEscrow[]; locked: Drops; brokerAddress: string }> {
   if (loan.guarantee) throw new AyzeError("AYZE_ALREADY_GUARANTEED", "This loan already has a protection seller.");
   if (loan.status !== "active") throw new AyzeError("AYZE_LOAN_CLOSED", "This loan is no longer active.");
   const broker = findUser(loan.brokerId);
   if (!broker) throw new AyzeError("AYZE_NOT_FOUND", "Broker not found.");
-  const wallet = walletOf(seller);
 
   const remaining = loan.schedule.filter((i) => !i.paidTxHash);
   const amounts = remaining.map((i) => bps(BigInt(i.principal), PROTECTION_BPS));
   const locked = amounts.reduce((a, b) => a + b, 0n);
-  const balance = await getSpendableBalance(wallet.address, remaining.length); // one escrow object per instalment
+  const balance = await getSpendableBalance(sellerAddress, remaining.length);
   if (balance < locked) throw new AyzeError("AYZE_INSUFFICIENT_FUNDS", `Guaranteeing needs ${dropsToXrp(locked)} XRP; wallet can spend ${dropsToXrp(balance)} (after reserve).`);
 
-  const escrows: EscrowRecord[] = [];
-  const hashes: string[] = [];
-  for (const [k, instalment] of remaining.entries()) {
+  const escrows = remaining.map((instalment, k): PlannedEscrow => {
     const { condition, fulfillment } = cryptoCondition();
     const cancelAfter = instalment.dueDate + (loan.graceSeconds ?? loan.gracePeriod) + CLAIM_WINDOW;
-    const tx: EscrowCreate = {
-      TransactionType: "EscrowCreate",
-      Account: wallet.address,
-      Destination: broker.wallet.address,
-      Amount: toXRPL(amounts[k]),
-      Condition: condition,
-      CancelAfter: cancelAfter,
-    };
-    const { hash, meta, sequence } = await submit(tx, wallet);
-    hashes.push(hash);
-    escrows.push({
+    return {
       index: instalment.index,
-      escrowID: createdIndex(meta, "Escrow"),
-      offerSequence: sequence,
-      amount: amounts[k].toString(),
+      amount: amounts[k],
       condition,
       fulfillment,
       cancelAfter,
+      tx: {
+        TransactionType: "EscrowCreate",
+        Account: sellerAddress,
+        Destination: broker.wallet.address,
+        Amount: toXRPL(amounts[k]),
+        Condition: condition,
+        CancelAfter: cancelAfter,
+      },
+    };
+  });
+  return { escrows, locked, brokerAddress: broker.wallet.address };
+}
+
+export async function guaranteeLoan(seller: User, loan: Loan): Promise<{ hashes: string[]; locked: Drops }> {
+  const wallet = walletOf(seller);
+  const plan = await planGuarantee(wallet.address, loan);
+
+  const escrows: EscrowRecord[] = [];
+  const hashes: string[] = [];
+  for (const planned of plan.escrows) {
+    const { hash, meta, sequence } = await submit(planned.tx, wallet);
+    hashes.push(hash);
+    escrows.push({
+      index: planned.index,
+      escrowID: createdIndex(meta, "Escrow"),
+      offerSequence: sequence,
+      amount: planned.amount.toString(),
+      condition: planned.condition,
+      fulfillment: planned.fulfillment,
+      cancelAfter: planned.cancelAfter,
       status: "LOCKED",
     });
   }
+  const locked = plan.locked;
 
   await updateRegistry((r) => {
     const target = r.loans.find((l) => l.id === loan.id);
