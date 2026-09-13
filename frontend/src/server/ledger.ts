@@ -6,6 +6,17 @@ import { getClient } from "./xrpl";
 
 type Node = Record<string, unknown>;
 
+/**
+ * True when `error` is rippled answering with `code` (e.g. entryNotFound, actNotFound).
+ * xrpl.js puts rippled's human `error_message` ("Entry not found.") in `message` and the
+ * code in `data.error`, so matching the message alone silently never fires.
+ */
+export function isRippledError(error: unknown, code: string): boolean {
+  if (!(error instanceof Error)) return false;
+  const data = (error as Error & { data?: { error?: string; error_code?: number } }).data;
+  return data?.error === code || error.message.includes(code);
+}
+
 export async function ledgerTime(): Promise<number> {
   const client = await getClient();
   const response = await client.request({ command: "ledger", ledger_index: "validated" });
@@ -18,7 +29,7 @@ export async function ledgerEntry(index: string): Promise<Node | null> {
     const response = await client.request({ command: "ledger_entry", index, ledger_index: "validated" });
     return response.result.node as unknown as Node;
   } catch (error) {
-    if (error instanceof Error && error.message.includes("entryNotFound")) return null;
+    if (isRippledError(error, "entryNotFound")) return null;
     throw error;
   }
 }
@@ -56,7 +67,7 @@ export async function getVaultState(vaultID: string): Promise<VaultState | null>
       pricePerShare: shares > 0n ? Number(assetsTotal) / Number(shares) / 10 ** (6 - scale) : 1,
     };
   } catch (error) {
-    if (error instanceof Error && error.message.includes("entryNotFound")) return null;
+    if (isRippledError(error, "entryNotFound")) return null;
     throw error;
   }
 }
@@ -125,7 +136,7 @@ export async function getXRPBalance(address: string): Promise<Drops> {
     const info = await client.request({ command: "account_info", account: address, ledger_index: "validated" });
     return BigInt(info.result.account_data.Balance);
   } catch (error) {
-    if (error instanceof Error && error.message.includes("actNotFound")) return 0n;
+    if (isRippledError(error, "actNotFound")) return 0n;
     throw error;
   }
 }
@@ -160,7 +171,7 @@ export async function getSpendableBalance(address: string, newObjects = 0): Prom
     const spendable = BigInt(data.Balance) - reserve.base - reserve.inc * owned;
     return spendable > 0n ? spendable : 0n;
   } catch (error) {
-    if (error instanceof Error && error.message.includes("actNotFound")) return 0n;
+    if (isRippledError(error, "actNotFound")) return 0n;
     throw error;
   }
 }
@@ -194,7 +205,7 @@ export async function hasCredential(subject: string, issuer: string, credentialT
     const LSF_ACCEPTED = 0x0001_0000;
     return (Number(node.Flags ?? 0) & LSF_ACCEPTED) !== 0;
   } catch (error) {
-    if (error instanceof Error && error.message.includes("entryNotFound")) return false;
+    if (isRippledError(error, "entryNotFound")) return false;
     throw error;
   }
 }
@@ -245,7 +256,7 @@ export async function getAccountActivity(address: string): Promise<AccountActivi
     const info = await client.request({ command: "account_info", account: address, ledger_index: "validated" });
     xrp = toNumber(BigInt(info.result.account_data.Balance));
   } catch (error) {
-    if (!(error instanceof Error && error.message.includes("actNotFound"))) throw error;
+    if (!isRippledError(error, "actNotFound")) throw error;
   }
 
   let lastTx: LastTx | null = null;
