@@ -1,0 +1,16 @@
+**/node_modules
+**/.next
+**/.env*
+!**/.env.example
+frontend/data
+ayze_src/state
+.xrpl-devex
+xrpl-devex-hook
+docs
+.git
+.github
+.claude
+.codex
+.cursor
+.grok
+*.md

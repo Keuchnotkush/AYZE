@@ -24,6 +24,12 @@ All notable changes to AYZE. Dates are the day the change landed in the working 
 - **Empty states** with a next step on every page; landing page tagline and role cards.
 - `docs/amendments/` — matrix and one page per amendment (XLS-65, XLS-66, XLS-70).
 
+- **Tests** — vitest on `amounts.ts` (drops, STNumber parsing, exact splits) and `economics.ts`
+  (fixed amounts, 50/30/20 split, schedule, term bounds, grace clamp); `npm run check` runs them.
+- **Dockerfile** rebuilt from the repo root: real lockfile (`npm ci` on the workspace), Next `standalone`
+  output, non-root `node` user, `/data` volume for the registry and platform wallet, `.dockerignore`
+  keeps `.env*`, `data/`, `node_modules` and docs out of the image.
+
 ### Changed
 
 - UI primitives now sit on **shadcn/ui** (`base-nova`, Base UI): `Button` (+ `pending`, `ButtonLink`),

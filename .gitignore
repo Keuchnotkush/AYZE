@@ -40,3 +40,9 @@ yarn-error.log*
 
 # demo.mjs wallet seeds for --from reruns
 frontend/scripts/.demo-*.json
+
+# Astro/Starlight scratch site (has its own node_modules and dist)
+docs/strong-saturn/
+
+# personal write-ups, not part of the repo
+docs/AYZE-XRPL-developer-feedback-A4.docx

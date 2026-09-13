@@ -65,7 +65,8 @@ or lose them on restart).
 
 ## Test
 
-**Checks:** `npm run check` (lint), `npm run build -w frontend` (typecheck + build, what Docker runs).
+**Checks:** `npm run check` (lint + unit tests on the bps math, amounts and schedule), `npm run build -w frontend`
+(typecheck + build, what Docker runs). Tests: `frontend/src/server/__tests__/`.
 
 **Manual walkthrough**, one browser profile per role (or log out between roles):
 
@@ -115,6 +116,14 @@ docs/specs/                  design specs
 ```
 
 ## Known limits
+
+- **Credentials are enforced by the application, not the ledger.** The vault is public and `LoanSet` has no
+  credential requirement, so `borrow()` checks `AYZE_KYC` + `VAULT_<id>` on the ledger before signing, and
+  `planGuarantee()` checks `PS_VAULT_<id>`. Ledger-side enforcement means XLS-80: a `PermissionedDomain`
+  listing the accepted credentials and a `tfVaultPrivate` vault bound to it. We left it out on purpose: it
+  would also gate *lenders* (every depositor would need a credential), we could not confirm the amendment on
+  the hackathon devnet, and with no real KYC behind the credential the extra ledger objects buy nothing for the
+  demo. The app-side check reads the same ledger entries a domain would.
 
 - Broker and borrower keys are custodial (server-held seeds); lender and protection-seller keys
   live only in an encrypted session cookie — neither is a real non-custodial wallet flow.

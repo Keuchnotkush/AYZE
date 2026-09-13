@@ -68,13 +68,23 @@ custodial and the extension guarantee paths refuse with `AYZE_PS_NOT_ACCREDITED`
 the accepted credential. `/protect` disables *Guarantee* and tells the seller which address to give the
 broker.
 
-## Enforcement is application-side
+## Enforcement is application-side (and why)
 
 The vault is public and `LoanSet` has no credential requirement of its own, so the ledger does not
-block an unverified borrower — `borrow()` does. Making the ledger enforce it would take XLS-80
-(`PermissionedDomainSet` with `AcceptedCredentials = [{ Issuer: AYZE, CredentialType: AYZE_KYC }]`,
-then `VaultCreate` with `tfVaultPrivate` + `DomainID`), which also means the lenders would need the
-credential to deposit. Out of scope while there is no real KYC behind the credential.
+block an unverified borrower — `borrow()` and `planGuarantee()` do, by reading the same `Credential`
+entries. The ledger-side alternative is XLS-80: `PermissionedDomainSet` with
+`AcceptedCredentials = [{ Issuer: AYZE, CredentialType: AYZE_KYC }, …]`, then `VaultCreate` with
+`tfVaultPrivate` + `DomainID`. We chose not to, for three reasons:
+
+1. A private vault gates **deposits** as well: every lender would need a credential from the domain,
+   which changes the product (open liquidity, gated borrowing) into a closed club.
+2. The domain checks the *vault* boundary, not the *loan*: it cannot express "this seller may
+   guarantee loans of this vault", which is what `PS_VAULT_<id>` does.
+3. We could not confirm the PermissionedDomains amendment on the lending-hackathon devnet, and with
+   no real KYC behind the credential the extra objects add nothing a judge can verify.
+
+If the product needed it, the change is contained: create the domain in `createVault`, add
+`DomainID` + `tfVaultPrivate` to the `VaultCreate`, and issue credentials to lenders too.
 
 ## Not used
 

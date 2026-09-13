@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "npm run dev -w frontend",
     "build": "npm run build -w frontend",
-    "check": "npm run check -w ayze_src && npm run lint -w frontend",
+    "check": "npm run check -w ayze_src && npm run lint -w frontend && npm run test -w frontend",
     "setup": "npm run accounts -w ayze_src && npm run token -w ayze_src && npm run vault -w ayze_src && npm run deposit -w ayze_src && npm run broker -w ayze_src && npm run cover -w ayze_src && npm run loan -w ayze_src && npm run insurance -w ayze_src && npm run escrow -w ayze_src"
   }
 }
