@@ -2,9 +2,19 @@ import { AccountActivity } from "@/components/dashboard/account-activity";
 import { Address } from "@/components/dashboard/address";
 import { Forbidden } from "@/components/dashboard/forbidden";
 import { Badge, Card, Stat } from "@/components/dashboard/stat";
+import { ExtensionTxForm } from "@/components/dashboard/extension-tx-form";
 import { TxForm } from "@/components/dashboard/tx-form";
 import { fmtXRP } from "@/lib/format";
-import { beVerifiedAction, borrowAction, depositAction, withdrawAction } from "@/server/actions";
+import {
+  beVerifiedAction,
+  borrowAction,
+  depositAction,
+  prepareDepositAction,
+  prepareWithdrawAction,
+  recordDepositAction,
+  recordWithdrawAction,
+  withdrawAction,
+} from "@/server/actions";
 import { pageRole } from "@/server/auth/session";
 import { hasVaultAccess } from "@/server/credentials";
 import { TERMS } from "@/server/economics";
@@ -75,20 +85,43 @@ export default async function MarketPage() {
               )}
             </div>
 
-            {isLender ? (
+            {isLender && user.provider ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <ExtensionTxForm
+                  inline
+                  provider={user.provider}
+                  prepare={prepareDepositAction}
+                  record={recordDepositAction}
+                  hidden={{ vaultId: vault.id }}
+                  fields={[{ name: "amount", label: "Deposit (XRP)", placeholder: "1000", required: true, type: "amount" }]}
+                  submitLabel="Deposit"
+                />
+                <ExtensionTxForm
+                  inline
+                  provider={user.provider}
+                  prepare={prepareWithdrawAction}
+                  record={recordWithdrawAction}
+                  hidden={{ vaultId: vault.id }}
+                  fields={[{ name: "amount", label: "Withdraw (XRP, empty = all)", placeholder: "Redeem all", type: "amount" }]}
+                  submitLabel="Withdraw"
+                  variant="outline"
+                  disabled={!positions[vault.id] || positions[vault.id].shares === 0}
+                />
+              </div>
+            ) : isLender ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 <TxForm
                   inline
                   action={depositAction}
                   hidden={{ vaultId: vault.id }}
-                  fields={[{ name: "amount", label: "Deposit (XRP)", placeholder: "1000", required: true }]}
+                  fields={[{ name: "amount", label: "Deposit (XRP)", placeholder: "1000", required: true, type: "amount" }]}
                   submitLabel="Deposit"
                 />
                 <TxForm
                   inline
                   action={withdrawAction}
                   hidden={{ vaultId: vault.id }}
-                  fields={[{ name: "amount", label: "Withdraw (XRP, empty = all)", placeholder: "Redeem all" }]}
+                  fields={[{ name: "amount", label: "Withdraw (XRP, empty = all)", placeholder: "Redeem all", type: "amount" }]}
                   submitLabel="Withdraw"
                   variant="outline"
                   disabled={!positions[vault.id] || positions[vault.id].shares === 0}

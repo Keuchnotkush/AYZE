@@ -15,7 +15,15 @@ type FieldSpec = {
   hint?: string;
   required?: boolean;
   defaultValue?: string;
-  type?: "text" | "number";
+  /** `amount` is free text validated server-side (XRP with up to 6 decimals) but gets a decimal keypad on phones. */
+  type?: "text" | "number" | "amount";
+};
+
+/** Mobile keyboard per field kind: text fields must not get the numeric keypad. */
+const INPUT_MODE: Record<NonNullable<FieldSpec["type"]>, "text" | "numeric" | "decimal"> = {
+  text: "text",
+  number: "numeric",
+  amount: "decimal",
 };
 
 type TxFormProps = {
@@ -60,8 +68,8 @@ export function TxForm({
           hint={field.hint}
           required={field.required}
           defaultValue={field.defaultValue}
-          type={field.type ?? "text"}
-          inputMode="decimal"
+          type={field.type === "number" ? "number" : "text"}
+          inputMode={INPUT_MODE[field.type ?? "text"]}
           autoComplete="off"
         />
       ))}

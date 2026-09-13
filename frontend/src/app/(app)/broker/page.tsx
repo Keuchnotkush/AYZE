@@ -61,7 +61,7 @@ export default async function BrokerPage() {
             fields={[
               { name: "name", label: "Name", placeholder: "Working capital · Q4", required: true },
               { name: "description", label: "Description", placeholder: "Short-term financing for…" },
-              { name: "firstLoss", label: "First-loss capital (XRP)", placeholder: "2100", required: true, hint: "700 XRP per open loan. Locked in the vault's LoanBroker." },
+              { name: "firstLoss", label: "First-loss capital (XRP)", placeholder: "2100", required: true, type: "amount", hint: "700 XRP per open loan. Locked in the vault's LoanBroker." },
             ]}
             submitLabel="Create vault"
             pendingLabel="Creating vault, LoanBroker and cover…"
