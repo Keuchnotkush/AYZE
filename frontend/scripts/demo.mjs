@@ -211,7 +211,15 @@ if (active.has("default")) {
       await page.reload();
       await newestLoan().waitFor({ timeout: 60000 });
       card = await text();
-      if (card.includes("In default window") || card.includes("defaulted by servicing")) break;
+      if (card.includes("defaulted by servicing")) break;
+      if (card.includes("In default window")) {
+        // The window just opened: let the 15 s servicing tick default the loan rather than racing it.
+        await page.waitForTimeout(20000);
+        await page.reload();
+        await newestLoan().waitFor({ timeout: 60000 });
+        card = await text();
+        break;
+      }
       await page.waitForTimeout(10000);
     }
     if (card.includes("defaulted by servicing")) {
@@ -238,6 +246,7 @@ if (active.has("balances")) {
   for (const role of Object.keys(HOME)) {
     await login(role);
     await page.goto(base + HOME[role]);
+    await page.locator("main").getByText("Wallet", { exact: true }).first().waitFor({ timeout: 60000 }); // page streams: wait for the header stat
     const m = (await page.locator("main").innerText()).match(/WALLET\s+([\d,.]+ XRP)/);
     log(role.padEnd(18), "wallet:", m?.[1]);
   }
