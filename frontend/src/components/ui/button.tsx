@@ -81,21 +81,14 @@ function Button({
   )
 }
 
-/** A Next.js `Link` styled as a button (Base UI `render` composition). */
+/** A Next.js `Link` styled as a button. A plain anchor on purpose: it must keep its link role. */
 function ButtonLink({
   className,
   variant = "primary",
   size = "md",
   ...props
 }: ComponentProps<typeof Link> & VariantProps<typeof buttonVariants>) {
-  return (
-    <ButtonPrimitive
-      data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
-      nativeButton={false}
-      render={<Link {...props} />}
-    />
-  )
+  return <Link data-slot="button" className={cn(buttonVariants({ variant, size, className }))} {...props} />
 }
 
 export { Button, ButtonLink, buttonVariants }

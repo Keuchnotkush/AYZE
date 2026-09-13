@@ -94,7 +94,7 @@ if (active.has("vault")) {
 if (active.has("deposit")) {
   await login("lender");
   await page.goto(base + "/market");
-  const card = page.locator("section", { hasText: vaultName });
+  const card = page.locator("[data-slot=card]", { hasText: vaultName });
   const form = card.locator("form", { has: page.locator('input[name=amount][placeholder="1000"]') });
   await form.locator("input[name=amount]").fill("2500");
   log("deposit:", await submitAndRead(form));
@@ -103,8 +103,18 @@ if (active.has("deposit")) {
 if (active.has("borrow")) {
   await login("borrower");
   await page.goto(base + "/market");
-  const card = page.locator("section", { hasText: vaultName });
-  const form = card.locator("form");
+  const card = page.locator("[data-slot=card]", { hasText: vaultName });
+  // Per-vault verification first: AYZE_KYC + VAULT_<id> credentials (CredentialCreate + CredentialAccept ×2).
+  const verify = card.locator("form", { hasText: "Be verified" });
+  if (await verify.count()) {
+    // On success the page revalidates and the verify form unmounts: accept the status box or the Verified badge.
+    await verify.locator("button[type=submit]").click();
+    const status = verify.locator("[role=status]");
+    const badge = card.getByText("Verified", { exact: true });
+    await Promise.race([status.waitFor({ timeout: 300000 }), badge.waitFor({ timeout: 300000 })]);
+    log("verify:", (await status.count()) ? (await status.innerText()).replace(/\s+/g, " ").trim() : "Verified badge shown (AYZE_KYC + VAULT credentials accepted)");
+  }
+  const form = card.locator("form", { has: page.locator("input[name=paymentTotal]") });
   await form.locator("input[name=paymentTotal]").fill("3");
   await form.locator("input[name=paymentInterval]").fill("120");
   log("borrow:", await submitAndRead(form));
@@ -158,6 +168,9 @@ if (active.has("default")) {
   await page.goto(base + "/broker");
   await page.locator("a[href^='/broker/vaults/']").first().click();
   await page.waitForURL("**/broker/vaults/**");
+  if ((await page.locator("main").innerText()).includes("Repaid")) {
+    log("default: loan already repaid by auto-debit; run the container with AYZE_AUTODEBIT=off to demo a default");
+  } else {
   let form = page.locator("form", { hasText: "Declare default" }).first();
   log("default (early):", await submitAndRead(form));
   for (let i = 0; i < 60; i++) {
@@ -167,6 +180,7 @@ if (active.has("default")) {
   }
   form = page.locator("form", { hasText: "Declare default" }).first();
   log("default (after grace):", await submitAndRead(form));
+  }
 }
 
 if (active.has("close")) {

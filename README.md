@@ -81,10 +81,16 @@ or lose them on restart).
 **Scripted end to end** (Playwright, real devnet transactions, against a running dashboard):
 
 ```bash
-node frontend/scripts/demo.mjs [--base http://localhost:3000] [--from <step>]
+# the default step needs a loan that is NOT auto-debited: start the container with AYZE_AUTODEBIT=off
+docker run -d --name ayze -p 3000:3000 -v ayze-data:/data -e AYZE_AUTODEBIT=off ayze
+npm i -D playwright -w frontend && npx playwright install chromium     # once
+node frontend/scripts/demo.mjs [--base http://localhost:3000] [--from <step>] | tee demo-run.log
 # steps: register, vault, deposit, borrow, accredit, guarantee, pay, rbac, default, close, balances
 # lender / protection-seller seeds are kept in frontend/scripts/.demo-<stamp>.json for --from reruns
 ```
+
+`AYZE_AUTODEBIT=off` only stops the servicing loop from paying instalments on the borrower's behalf; auto-default,
+escrow claim and escrow release still run. Leave it on for the normal demo.
 
 ## Ledger mapping
 

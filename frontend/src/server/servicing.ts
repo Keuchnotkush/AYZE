@@ -15,6 +15,9 @@ import { submit } from "./xrpl";
 
 export const SERVICING_INTERVAL_MS = 15_000;
 
+/** `AYZE_AUTODEBIT=off` leaves instalments to the borrower (manual "Pay instalment"), which is how a default is demoed. */
+const AUTODEBIT = (process.env.AYZE_AUTODEBIT ?? "on").toLowerCase() !== "off";
+
 export type ServicingReport = {
   ranAt: string;
   ledgerTime: number;
@@ -164,7 +167,7 @@ async function pass(): Promise<ServicingReport> {
     try {
       await collectFee(loan, report);
       if (loan.status === "active") {
-        await debit(loan, now, report);
+        if (AUTODEBIT) await debit(loan, now, report);
         await autoDefault(loan, now, report);
       }
       const current = fresh(loan.id);
@@ -189,5 +192,5 @@ export function startServicing() {
   globalRef.__ayzeServicing = setInterval(tick, SERVICING_INTERVAL_MS);
   globalRef.__ayzeServicing.unref?.();
   setTimeout(tick, 2_000).unref?.();
-  console.info(`[servicing] started, every ${SERVICING_INTERVAL_MS / 1000}s`);
+  console.info(`[servicing] started, every ${SERVICING_INTERVAL_MS / 1000}s, auto-debit ${AUTODEBIT ? "on" : "off (AYZE_AUTODEBIT=off)"}`);
 }
