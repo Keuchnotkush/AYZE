@@ -42,33 +42,48 @@ implicit actor: it issues the `AYZE_KYC` credential, takes a 0.5% origination fe
 8. Once a loan is repaid or closed, the broker can withdraw the residual cover and delete the
    loan broker.
 
-## Run locally
+## Run
+
+**Docker** (what the demo runs):
+
+```bash
+docker build -t ayze .
+docker run -d --name ayze -p 3000:3000 -v ayze-data:/app/data ayze
+```
+
+**Local dev:**
 
 ```bash
 npm install
-npm run dev -w frontend        # dashboard on http://localhost:3000
+npm run dev -w frontend        # http://localhost:3000
 ```
 
-Environment (`frontend/.env.local`, see `frontend/.env.example`):
+Defaults target the lending-hackathon devnet and need no configuration. To override, copy
+`frontend/.env.example` to `frontend/.env.local` (`XRPL_WSS`, `XRPL_GENESIS_SEED`, `AYZE_DATA_DIR`,
+`AYZE_SESSION_SECRET`, `NEXT_PUBLIC_XRPL_EXPLORER`). Wallets, vaults and loans live in `data/` (mount it
+or lose them on restart).
 
-```
-XRPL_WSS=wss://lending-hackathon.dev.ripplex.io:51233
-NEXT_PUBLIC_XRPL_EXPLORER=https://custom.xrpl.org/lending-hackathon.dev.ripplex.io:51233
-XRPL_GENESIS_SEED=snoPBrXtMeMyMHUVTgbuqAfg1SUTb   # funds every new demo wallet with XRP
-AYZE_DATA_DIR=data                                 # registry.json / platform.json
-AYZE_SESSION_SECRET=change-me                      # signs/encrypts the session cookie
-```
+## Test
 
-The servicing loop runs on a timer inside the app and is also reachable at
-`POST /api/servicing/run` for manual ticks.
+**Checks:** `npm run check` (lint), `npm run build -w frontend` (typecheck + build, what Docker runs).
 
-Full walkthrough against a running dashboard (real devnet transactions, via Playwright):
+**Manual walkthrough**, one browser profile per role (or log out between roles):
+
+1. **Broker** — create account → *Create a vault* (first-loss `2100` XRP = 3 loans).
+2. **Lender** — *Connect wallet* (generate a seed, or Crossmark/GemWallet on the devnet) → deposit `1000`+ XRP into the vault.
+3. **Borrower** — create account → `/market` → *Be verified* (2 credentials) → *Borrow 1 000 XRP* with `3` instalments every `60` s.
+4. **Protection seller** — *Connect wallet* → note your address in the header → the broker pastes it under
+   *Accredited protection sellers* on the vault page → back on `/protect`, *Accept accreditation* → *Guarantee*.
+5. Wait: instalments auto-debit every 15 s tick; let one lapse past grace to see auto-default, escrow claim and
+   *Close loan* on the broker's vault page. `POST /api/servicing/run` forces a tick.
+
+**Scripted end to end** (Playwright, real devnet transactions, against a running dashboard):
 
 ```bash
 node frontend/scripts/demo.mjs [--base http://localhost:3000] [--from <step>]
+# steps: register, vault, deposit, borrow, accredit, guarantee, pay, rbac, default, close, balances
+# lender / protection-seller seeds are kept in frontend/scripts/.demo-<stamp>.json for --from reruns
 ```
-
-Steps: `register, vault, deposit, borrow, guarantee, pay, rbac, default, close, balances`.
 
 ## Ledger mapping
 

@@ -1,7 +1,8 @@
 // End-to-end marketplace scenario against the running dashboard (real devnet transactions).
 // Usage: node scripts/demo.mjs [--base http://localhost:3000] [--stamp <existing run>] [--from <step>]
-// Steps: register, vault, deposit, borrow, guarantee, pay, rbac, default, close, balances
+// Steps: register, vault, deposit, borrow, accredit, guarantee, pay, rbac, default, close, balances
 import { createRequire } from "node:module";
+import fs from "node:fs";
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_PATH ?? "playwright");
 
@@ -9,7 +10,7 @@ const args = Object.fromEntries(process.argv.slice(2).map((a, i, all) => (a.star
 const base = args.base ?? "http://localhost:3000";
 const stamp = args.stamp ?? Date.now().toString(36);
 const from = args.from ?? "register";
-const STEPS = ["register", "vault", "deposit", "borrow", "guarantee", "pay", "rbac", "default", "close", "balances"];
+const STEPS = ["register", "vault", "deposit", "borrow", "accredit", "guarantee", "pay", "rbac", "default", "close", "balances"];
 const active = new Set(STEPS.slice(STEPS.indexOf(from)));
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
@@ -17,28 +18,53 @@ const browser = await chromium.launch();
 const page = await (await browser.newContext({ viewport: { width: 1280, height: 1000 } })).newPage();
 const email = (role) => `${role}-${stamp}@ayze.demo`;
 const HOME = { broker: "/broker", lender: "/market", borrower: "/borrower", "protection-seller": "/protect" };
+/* Lender and protection seller are wallet-only: their seeds are generated on first run and kept
+   next to the script so a later `--from <step>` can reconnect them. */
+const WALLET_ROLES = ["lender", "protection-seller"];
+const SEEDS_FILE = new URL(`./.demo-${stamp}.json`, import.meta.url);
+const seeds = fs.existsSync(SEEDS_FILE) ? JSON.parse(fs.readFileSync(SEEDS_FILE, "utf8")) : {};
 
 async function login(role) {
   await page.context().clearCookies();
   await page.goto(base + "/login");
-  await page.fill("input[name=email]", email(role));
-  await page.fill("input[name=password]", "demo1234");
-  await page.click("button[type=submit]");
+  if (WALLET_ROLES.includes(role)) {
+    await page.getByRole("tab", { name: "Connect wallet" }).click();
+    await page.click(`input[name=role][value="${role}"]`, { force: true });
+    await page.fill("input[name=seed]", seeds[role]);
+    await page.getByRole("button", { name: "Connect wallet" }).click();
+  } else {
+    await page.fill("input[name=email]", email(role));
+    await page.fill("input[name=password]", "demo1234");
+    await page.click("button[type=submit]");
+  }
   await page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 60000 });
 }
 
 async function register(role, company) {
   await page.context().clearCookies();
   await page.goto(base + "/login");
-  await page.getByRole("tab", { name: "Create account" }).click();
-  await page.fill("input[name=company]", company);
-  await page.fill("input[name=email]", email(role));
-  await page.fill("input[name=password]", "demo1234");
-  await page.click(`input[name=role][value="${role}"]`, { force: true });
-  await page.click("button[type=submit]");
+  if (WALLET_ROLES.includes(role)) {
+    await page.getByRole("tab", { name: "Connect wallet" }).click();
+    await page.click(`input[name=role][value="${role}"]`, { force: true });
+    await page.getByRole("button", { name: "Generate wallet" }).click();
+    const seed = (await page.locator("code", { hasText: /^s/ }).first().innerText({ timeout: 180000 })).trim();
+    seeds[role] = seed;
+    fs.writeFileSync(SEEDS_FILE, JSON.stringify(seeds, null, 2));
+    await page.getByRole("link", { name: "Continue to dashboard" }).click();
+  } else {
+    await page.getByRole("tab", { name: "Create account" }).click();
+    await page.fill("input[name=company]", company);
+    await page.fill("input[name=email]", email(role));
+    await page.fill("input[name=password]", "demo1234");
+    await page.click(`input[name=role][value="${role}"]`, { force: true });
+    await page.click("button[type=submit]");
+  }
   await page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 180000 });
   log("registered", role, "→", page.url());
 }
+
+/** Full r-address of the logged-in user, from the header's explorer link. */
+const myAddress = () => page.locator("header a[title^='r']").first().getAttribute("title");
 
 async function submitAndRead(form, timeout = 300000) {
   await form.locator("button[type=submit]").click();
@@ -82,6 +108,22 @@ if (active.has("borrow")) {
   await form.locator("input[name=paymentTotal]").fill("3");
   await form.locator("input[name=paymentInterval]").fill("120");
   log("borrow:", await submitAndRead(form));
+}
+
+if (active.has("accredit")) {
+  await login("protection-seller");
+  const sellerAddress = await myAddress();
+  await login("broker");
+  await page.goto(base + "/broker");
+  await page.locator("a[href^='/broker/vaults/']").first().click();
+  await page.waitForURL("**/broker/vaults/**");
+  const issue = page.locator("form", { has: page.locator("input[name=address]") });
+  await issue.locator("input[name=address]").fill(sellerAddress);
+  log("accredit (broker):", await submitAndRead(issue));
+  await login("protection-seller");
+  await page.goto(base + "/protect");
+  const accept = page.locator("form", { hasText: "Accept accreditation" }).first();
+  log("accredit (seller accepts):", await submitAndRead(accept));
 }
 
 if (active.has("guarantee")) {
